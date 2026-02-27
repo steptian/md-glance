@@ -1,0 +1,837 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Markdown Preview</title>
+
+    <style>
+            html, body { margin: 0; padding: 0; height: 100%; background-color: transparent; }
+
+    .markdown-body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+        font-size: 16px;
+        line-height: 1.7;
+        word-wrap: break-word;
+        padding: 32px 40px;
+        max-width: 920px;
+        margin: 0 auto;
+        color: #24292f;
+        -webkit-font-smoothing: antialiased;
+    }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3,
+    .markdown-body h4, .markdown-body h5, .markdown-body h6 {
+        margin-top: 24px; margin-bottom: 16px; font-weight: 600; line-height: 1.25;
+    }
+    .markdown-body h1 { font-size: 2em;   border-bottom: 1px solid #d0d7de; padding-bottom: .3em; }
+    .markdown-body h2 { font-size: 1.5em; border-bottom: 1px solid #d0d7de; padding-bottom: .3em; }
+    .markdown-body h3 { font-size: 1.25em; }
+    .markdown-body h4 { font-size: 1em; }
+    .markdown-body p  { margin-top: 0; margin-bottom: 16px; }
+    .markdown-body code {
+        padding: .2em .4em; margin: 0; font-size: 85%;
+        background-color: rgba(175,184,193,0.2); border-radius: 6px;
+    }
+    .markdown-body pre {
+        position: relative;
+        padding: 16px; overflow: auto; font-size: 85%; line-height: 1.45;
+        background-color: #f6f8fa; border-radius: 6px;
+    }
+    .markdown-body pre code { background-color: transparent; padding: 0; font-size: 100%; counter-reset: line; }
+    .markdown-body blockquote {
+        padding: 0 1em; color: #57606a;
+        border-left: .25em solid #d0d7de; margin: 0 0 16px 0;
+    }
+    .markdown-body a { color: #0969da; text-decoration: none; }
+    .markdown-body a:hover { text-decoration: underline; }
+    .markdown-body ul, .markdown-body ol { padding-left: 2em; margin-top: 0; margin-bottom: 16px; }
+    .markdown-body li { margin-top: .25em; }
+    .markdown-body img { max-width: 100%; box-sizing: content-box; background-color: #fff; }
+    .markdown-body table {
+        border-spacing: 0; border-collapse: collapse;
+        display: block; width: max-content; max-width: 100%; margin-bottom: 16px;
+    }
+    .markdown-body table th, .markdown-body table td { padding: 6px 13px; border: 1px solid #d0d7de; }
+    .markdown-body table th { font-weight: 600; background-color: #f6f8fa; }
+    .markdown-body table tr:nth-child(2n) { background-color: #f6f8fa; }
+    .markdown-body hr {
+        height: .25em; padding: 0; margin: 24px 0;
+        background-color: #d0d7de; border: 0;
+    }
+
+    /* highlight.js */
+    .hljs { background: transparent; padding: 0; }
+
+    /* 代码块工具栏 */
+    .code-toolbar {
+        position: absolute;
+        top: 6px;
+        right: 8px;
+        display: flex;
+        gap: 4px;
+        opacity: 0;
+        transition: opacity 0.15s ease-in-out;
+    }
+    .markdown-body pre:hover .code-toolbar {
+        opacity: 1;
+    }
+    .code-btn {
+        width: 18px;
+        height: 18px;
+        border-radius: 4px;
+        border: none;
+        background-color: rgba(0,0,0,0.04);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        padding: 0;
+    }
+    .code-btn svg {
+        width: 12px;
+        height: 12px;
+    }
+    .code-btn:active {
+        transform: scale(0.95);
+    }
+
+    /* Mermaid 图表 */
+    .mermaid { text-align: center; margin: 16px 0; }
+
+    /* KaTeX 公式 */
+    .math-display { display: block; text-align: center; margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
+    .math-display::-webkit-scrollbar { height: 6px; }
+    .math-inline  { /* KaTeX 渲染后自带 inline 样式 */ }
+    .katex-display { margin: 1em 0; overflow-x: auto; overflow-y: hidden; }
+    .katex-display::-webkit-scrollbar { height: 6px; }
+
+    /* 骨架屏：fixed 覆盖，不影响文档流；3 秒后 CSS 兜底淡出 */
+    #skeleton {
+        position: fixed;
+        top: 0; left: 0; right: 0; bottom: 0;
+        z-index: 999;
+        overflow: auto;
+        background-color: #ffffff;
+        animation: sk-autohide 0.3s ease-out 3s both;
+    }
+    @keyframes sk-autohide { to { opacity: 0; pointer-events: none; } }
+
+    .skeleton {
+        max-width: 920px;
+        margin: 32px auto;
+        padding: 0 40px;
+    }
+    .skeleton .sk-title {
+        height: 24px;
+        margin-bottom: 16px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: sk-shimmer 1.5s infinite;
+    }
+    .skeleton .sk-line {
+        height: 12px;
+        margin-bottom: 10px;
+        border-radius: 6px;
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: sk-shimmer 1.5s infinite;
+    }
+    .skeleton .sk-line.w80 { width: 80%; }
+    .skeleton .sk-line.w60 { width: 60%; }
+    .skeleton .sk-line.w90 { width: 90%; }
+    .skeleton .sk-gap { height: 8px; }
+    .skeleton .sk-block {
+        height: 120px;
+        border-radius: 8px;
+        margin: 8px 0 16px;
+        background: linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%);
+        background-size: 200% 100%;
+        animation: sk-shimmer 1.5s infinite;
+    }
+    .skeleton .sk-block.short {
+        height: 80px;
+        width: 70%;
+    }
+
+    @keyframes sk-shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+    }
+
+    /* 深色模式 */
+    @media (prefers-color-scheme: dark) {
+        .markdown-body { color: #e6edf3; }
+        .markdown-body h1, .markdown-body h2 { border-bottom-color: #30363d; }
+        .markdown-body code { background-color: rgba(110,118,129,0.25); }
+        .markdown-body pre  { background-color: #161b22; }
+        .markdown-body blockquote { color: #8b949e; border-left-color: #3b82f6; }
+        .markdown-body a { color: #58a6ff; }
+        .markdown-body table th, .markdown-body table td { border-color: #30363d; }
+        .markdown-body table th, .markdown-body table tr:nth-child(2n) { background-color: #161b22; }
+        .markdown-body hr { background-color: #30363d; }
+        #skeleton { background-color: #0d1117; }
+        .skeleton .sk-title,
+        .skeleton .sk-line,
+        .skeleton .sk-block {
+            background: linear-gradient(90deg, #20242d 25%, #2b3240 50%, #20242d 75%);
+        }
+    }
+    </style>
+
+    <!-- KaTeX CSS -->
+    <link rel="stylesheet" href="css/katex.min.css">
+
+    <!-- highlight.js -->
+    <link rel="stylesheet" href="css/github.min.css">
+    <script src="js/highlight.min.js"></script>
+
+    <!-- KaTeX -->
+    <script src="js/katex.min.js"></script>
+
+    <!-- Mermaid -->
+    <script src="js/mermaid.min.js"></script>
+</head>
+<body>
+    <div id="skeleton" class="skeleton">
+        <div class="sk-title"></div>
+        <div class="sk-line w80"></div>
+        <div class="sk-line w60"></div>
+        <div class="sk-line w90"></div>
+        <div class="sk-gap"></div>
+        <div class="sk-block"></div>
+        <div class="sk-line w70"></div>
+        <div class="sk-line w50"></div>
+        <div class="sk-gap"></div>
+        <div class="sk-block short"></div>
+    </div>
+    <article class="markdown-body">
+        <h1 id="md-glance-渲染能力测试文档">md-glance 渲染能力测试文档</h1><p>本文档包含复杂的 Mermaid 图表、LaTeX 数学公式及各类 GFM 语法，用于全面测试 Markdown 阅读器的渲染能力。</p><hr><h2 id="一-数学公式">一、数学公式</h2><h3 id="1-1-行内公式">1.1 行内公式</h3><p>爱因斯坦质能方程 <span class="math-inline">E = mc^2</span> 是物理学中最著名的公式之一。欧拉恒等式 <span class="math-inline">e^{i&#92;pi} + 1 = 0</span> 被誉为"最优美的数学公式"。薛定谔方程中，波函数 <span class="math-inline">&#92;Psi(&#92;mathbf{r}, t)</span> 满足归一化条件 <span class="math-inline">&#92;int_{-&#92;infty}^{&#92;infty} |&#92;Psi|^2 &#92;, dx = 1</span>。贝叶斯定理 <span class="math-inline">P(A|B) = &#92;frac{P(B|A) &#92;cdot P(A)}{P(B)}</span> 是概率论的基石。</p><h3 id="1-2-极限与微积分">1.2 极限与微积分</h3><div class="math-display">\lim_{n \to \infty} \left(1 + \frac{1}{n}\right)^n = e</div><div class="math-display">\frac{d}{dx}\left[\int_{a}^{x} f(t)\,dt\right] = f(x)</div><div class="math-display">\int_0^\infty e^{-x^2} \, dx = \frac{\sqrt{\pi}}{2}</div><div class="math-display">\oint_C \mathbf{F} \cdot d\mathbf{r} = \iint_S (\nabla \times \mathbf{F}) \cdot d\mathbf{S}</div><h3 id="1-3-级数与求和">1.3 级数与求和</h3><div class="math-display">\sum_{n=0}^{\infty} \frac{x^n}{n!} = e^x</div><div class="math-display">\prod_{p \text{ prime}} \frac{1}{1 - p^{-s}} = \sum_{n=1}^{\infty} \frac{1}{n^s} = \zeta(s), \quad \Re(s) &gt; 1</div><div class="math-display">\sum_{k=0}^{n} \binom{n}{k} x^k y^{n-k} = (x + y)^n</div><h3 id="1-4-矩阵与线性代数">1.4 矩阵与线性代数</h3><div class="math-display">A = \begin{pmatrix}
+a_{11} &amp; a_{12} &amp; \cdots &amp; a_{1n} \\
+a_{21} &amp; a_{22} &amp; \cdots &amp; a_{2n} \\
+\vdots &amp; \vdots &amp; \ddots &amp; \vdots \\
+a_{m1} &amp; a_{m2} &amp; \cdots &amp; a_{mn}
+\end{pmatrix}</div><div class="math-display">\det(A) = \sum_{\sigma \in S_n} \text{sgn}(\sigma) \prod_{i=1}^{n} a_{i,\sigma(i)}</div><div class="math-display">\begin{bmatrix}
+1 &amp; 0 &amp; 0 \\
+0 &amp; \cos\theta &amp; -\sin\theta \\
+0 &amp; \sin\theta &amp; \cos\theta
+\end{bmatrix}
+\begin{bmatrix} x \\ y \\ z \end{bmatrix}
+=
+\begin{bmatrix} x \\ y\cos\theta - z\sin\theta \\ y\sin\theta + z\cos\theta \end{bmatrix}</div><h3 id="1-5-分段函数与方程组">1.5 分段函数与方程组</h3><div class="math-display">f(x) = \begin{cases}
+\displaystyle\frac{x^2 - 1}{x - 1} &amp; \text{if } x \neq 1 \\[10pt]
+2 &amp; \text{if } x = 1
+\end{cases}</div><div class="math-display">\begin{aligned}
+\nabla \cdot \mathbf{E} &amp;= \frac{\rho}{\varepsilon_0} \\[6pt]
+\nabla \cdot \mathbf{B} &amp;= 0 \\[6pt]
+\nabla \times \mathbf{E} &amp;= -\frac{\partial \mathbf{B}}{\partial t} \\[6pt]
+\nabla \times \mathbf{B} &amp;= \mu_0 \mathbf{J} + \mu_0 \varepsilon_0 \frac{\partial \mathbf{E}}{\partial t}
+\end{aligned}</div><h3 id="1-6-复杂嵌套公式">1.6 复杂嵌套公式</h3><div class="math-display">\mathcal{L}\{f(t)\} = \int_0^{\infty} f(t) \, e^{-st} \, dt = F(s)</div><div class="math-display">\hat{f}(\xi) = \int_{-\infty}^{\infty} f(x) \, e^{-2\pi i x \xi} \, dx</div><div class="math-display">\cfrac{1}{1 + \cfrac{1}{2 + \cfrac{1}{3 + \cfrac{1}{4 + \cdots}}}} = \frac{e - 1}{e + 1}</div><div class="math-display">\underbrace{\int \cdots \int}_{n} f(x_1, x_2, \ldots, x_n) \, dx_1 \, dx_2 \cdots dx_n</div><hr><h2 id="二-mermaid-图表">二、Mermaid 图表</h2><h3 id="2-1-复杂流程图-含子图">2.1 复杂流程图（含子图）</h3><div class="mermaid">flowchart TB
+    subgraph 客户端["🖥️ 客户端"]
+        A[用户请求] --&gt; B{认证检查}
+        B --&gt;|已认证| C[生成 Token]
+        B --&gt;|未认证| D[登录页面]
+        D --&gt; E[输入凭证]
+        E --&gt; F{验证凭证}
+        F --&gt;|成功| C
+        F --&gt;|失败| G[错误提示]
+        G --&gt; D
+    end
+
+    subgraph 网关["🌐 API 网关"]
+        H[负载均衡] --&gt; I{路由分发}
+        I --&gt;|/api/user| J[用户服务]
+        I --&gt;|/api/order| K[订单服务]
+        I --&gt;|/api/product| L[商品服务]
+        I --&gt;|/api/pay| M[支付服务]
+    end
+
+    subgraph 数据层["💾 数据层"]
+        N[(MySQL 主库)]
+        O[(MySQL 从库)]
+        P[(Redis 缓存)]
+        Q[(Elasticsearch)]
+        N --&gt;|主从复制| O
+    end
+
+    C --&gt; H
+    J --&gt; P
+    J --&gt; N
+    K --&gt; N
+    K --&gt; P
+    L --&gt; Q
+    L --&gt; O
+    M --&gt; N
+
+    style 客户端 fill:#e1f5fe,stroke:#01579b
+    style 网关 fill:#f3e5f5,stroke:#4a148c
+    style 数据层 fill:#e8f5e9,stroke:#1b5e20</div><h3 id="2-2-时序图">2.2 时序图</h3><div class="mermaid">sequenceDiagram
+    autonumber
+    actor 用户
+    participant 前端 as 前端应用
+    participant GW as API 网关
+    participant Auth as 认证服务
+    participant BIZ as 业务服务
+    participant DB as 数据库
+    participant MQ as 消息队列
+    participant Cache as Redis
+
+    用户-&gt;&gt;前端: 发起操作请求
+    前端-&gt;&gt;GW: HTTP 请求 + JWT
+    
+    GW-&gt;&gt;Cache: 查询 Token 黑名单
+    Cache--&gt;&gt;GW: Token 有效
+    
+    GW-&gt;&gt;Auth: 验证 &amp; 解析 Token
+    Auth--&gt;&gt;GW: 用户身份信息
+    
+    GW-&gt;&gt;BIZ: 转发请求 + 用户上下文
+    
+    BIZ-&gt;&gt;Cache: 查询缓存
+    alt 缓存命中
+        Cache--&gt;&gt;BIZ: 返回缓存数据
+    else 缓存未命中
+        BIZ-&gt;&gt;DB: 查询数据
+        DB--&gt;&gt;BIZ: 返回结果
+        BIZ-&gt;&gt;Cache: 写入缓存
+    end
+    
+    BIZ-&gt;&gt;MQ: 发送异步事件
+    BIZ--&gt;&gt;GW: 响应数据
+    GW--&gt;&gt;前端: HTTP 响应
+    前端--&gt;&gt;用户: 展示结果
+    
+    Note over MQ,DB: 异步处理流程
+    MQ-&gt;&gt;BIZ: 消费事件
+    BIZ-&gt;&gt;DB: 更新统计数据</div><h3 id="2-3-类图">2.3 类图</h3><div class="mermaid">classDiagram
+    class Animal {
+        &lt;&lt;abstract&gt;&gt;
+        +String name
+        +int age
+        #String habitat
+        +makeSound()* void
+        +move() void
+        +toString() String
+    }
+    
+    class Mammal {
+        +float bodyTemperature
+        +nurse() void
+    }
+    
+    class Bird {
+        +float wingspan
+        +fly() void
+        +layEggs() void
+    }
+    
+    class Dog {
+        +String breed
+        +makeSound() void
+        +fetch() void
+    }
+    
+    class Cat {
+        +boolean isIndoor
+        +makeSound() void
+        +purr() void
+    }
+    
+    class Eagle {
+        +float maxAltitude
+        +makeSound() void
+        +hunt() void
+    }
+    
+    class ISwimmable {
+        &lt;&lt;interface&gt;&gt;
+        +swim() void
+        +dive(depth: float) void
+    }
+    
+    class ITrainable {
+        &lt;&lt;interface&gt;&gt;
+        +train(command: String) bool
+        +getSkills() List~String~
+    }
+
+    Animal &lt;|-- Mammal
+    Animal &lt;|-- Bird
+    Mammal &lt;|-- Dog
+    Mammal &lt;|-- Cat
+    Bird &lt;|-- Eagle
+    ISwimmable &lt;|.. Dog : implements
+    ITrainable &lt;|.. Dog : implements
+    ITrainable &lt;|.. Eagle : implements</div><h3 id="2-4-状态图">2.4 状态图</h3><div class="mermaid">stateDiagram-v2
+    [*] --&gt; 待支付
+    
+    state 待支付 {
+        [*] --&gt; 创建订单
+        创建订单 --&gt; 选择支付方式
+        选择支付方式 --&gt; 发起支付
+    }
+    
+    待支付 --&gt; 支付中: 用户确认支付
+    
+    state 支付中 {
+        [*] --&gt; 等待回调
+        等待回调 --&gt; 验证签名
+        验证签名 --&gt; 更新状态
+    }
+    
+    支付中 --&gt; 已支付: 支付成功
+    支付中 --&gt; 支付失败: 支付超时/异常
+    支付失败 --&gt; 待支付: 重新支付
+    支付失败 --&gt; 已取消: 用户取消
+    
+    已支付 --&gt; 待发货: 商家确认
+    待发货 --&gt; 已发货: 物流揽收
+    已发货 --&gt; 已签收: 用户签收
+    已签收 --&gt; 已完成: 确认收货
+    已签收 --&gt; 退货中: 申请退货
+    退货中 --&gt; 已退款: 退货完成
+    退货中 --&gt; 已完成: 取消退货
+    
+    已取消 --&gt; [*]
+    已完成 --&gt; [*]
+    已退款 --&gt; [*]</div><h3 id="2-5-甘特图">2.5 甘特图</h3><div class="mermaid">gantt
+    title 产品开发路线图 2026 Q1
+    dateFormat YYYY-MM-DD
+    axisFormat %m/%d
+
+    section 需求阶段
+        市场调研           :done,    r1, 2026-01-06, 10d
+        竞品分析           :done,    r2, after r1, 5d
+        需求评审           :done,    r3, after r2, 3d
+    
+    section 设计阶段
+        系统架构设计       :done,    d1, after r3, 7d
+        UI/UX 设计         :done,    d2, after r3, 12d
+        数据库设计         :done,    d3, after d1, 5d
+        API 接口设计       :done,    d4, after d1, 5d
+    
+    section 开发阶段
+        基础框架搭建       :active,  e1, after d3, 7d
+        用户模块           :         e2, after e1, 10d
+        订单模块           :         e3, after e1, 12d
+        支付模块           :         e4, after e2, 8d
+        通知模块           :         e5, after e3, 6d
+    
+    section 测试阶段
+        单元测试           :         t1, after e2, 15d
+        集成测试           :         t2, after e4, 10d
+        性能测试           :crit,    t3, after t2, 7d
+        安全审计           :crit,    t4, after t2, 5d
+    
+    section 上线
+        灰度发布           :milestone, m1, after t3, 0d
+        全量发布           :milestone, m2, after m1, 7d</div><h3 id="2-6-饼图">2.6 饼图</h3><div class="mermaid">pie showData
+    title 前端框架市场份额 (2026)
+    "React" : 38.5
+    "Vue.js" : 24.2
+    "Angular" : 15.8
+    "Svelte" : 9.3
+    "Solid" : 5.1
+    "其他" : 7.1</div><h3 id="2-7-er-图">2.7 ER 图</h3><div class="mermaid">erDiagram
+    USER ||--o{ ORDER : places
+    USER {
+        bigint id PK
+        varchar username UK
+        varchar email UK
+        varchar password_hash
+        enum status
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    ORDER ||--|{ ORDER_ITEM : contains
+    ORDER {
+        bigint id PK
+        bigint user_id FK
+        varchar order_no UK
+        decimal total_amount
+        enum status
+        text remark
+        timestamp created_at
+    }
+    
+    ORDER_ITEM }|--|| PRODUCT : references
+    ORDER_ITEM {
+        bigint id PK
+        bigint order_id FK
+        bigint product_id FK
+        int quantity
+        decimal unit_price
+        decimal subtotal
+    }
+    
+    PRODUCT ||--o{ PRODUCT_SKU : has
+    PRODUCT {
+        bigint id PK
+        bigint category_id FK
+        varchar name
+        text description
+        enum status
+        timestamp created_at
+    }
+    
+    CATEGORY ||--o{ PRODUCT : contains
+    CATEGORY {
+        bigint id PK
+        bigint parent_id FK
+        varchar name
+        int sort_order
+    }
+    
+    PRODUCT_SKU {
+        bigint id PK
+        bigint product_id FK
+        varchar sku_code UK
+        decimal price
+        int stock
+        json attributes
+    }
+    
+    ORDER }|--|| PAYMENT : "paid via"
+    PAYMENT {
+        bigint id PK
+        bigint order_id FK
+        varchar transaction_no UK
+        decimal amount
+        enum channel
+        enum status
+        timestamp paid_at
+    }</div><h3 id="2-8-git-图">2.8 Git 图</h3><div class="mermaid">gitGraph
+    commit id: "init"
+    commit id: "v0.1.0"
+    branch feature/auth
+    checkout feature/auth
+    commit id: "add login"
+    commit id: "add register"
+    commit id: "add JWT"
+    checkout main
+    branch feature/order
+    checkout feature/order
+    commit id: "order model"
+    commit id: "order API"
+    checkout main
+    merge feature/auth id: "merge auth" tag: "v0.2.0"
+    checkout feature/order
+    commit id: "order test"
+    checkout main
+    merge feature/order id: "merge order"
+    commit id: "hotfix: XSS" type: REVERSE
+    branch release/1.0
+    checkout release/1.0
+    commit id: "bump version"
+    commit id: "update docs"
+    checkout main
+    merge release/1.0 id: "v1.0.0" tag: "v1.0.0"</div><h3 id="2-9-用户旅程图">2.9 用户旅程图</h3><div class="mermaid">journey
+    title 用户网购体验旅程
+    section 发现商品
+        搜索商品: 3: 用户
+        浏览列表: 3: 用户
+        查看详情: 4: 用户
+        阅读评价: 4: 用户
+    section 下单购买
+        加入购物车: 5: 用户
+        选择规格: 3: 用户
+        填写地址: 2: 用户
+        确认支付: 4: 用户, 支付系统
+    section 等待收货
+        查看物流: 3: 用户, 物流
+        联系客服: 2: 用户, 客服
+        确认签收: 5: 用户, 物流
+    section 售后
+        评价商品: 4: 用户
+        申请退货: 2: 用户, 客服</div><hr><h2 id="三-gfm-扩展语法">三、GFM 扩展语法</h2><h3 id="3-1-任务列表">3.1 任务列表</h3><ul><li>[x] 支持基础 Markdown 渲染</li><li>[x] 支持 GFM 表格</li><li>[x] 支持代码高亮</li><li>[x] 支持 KaTeX 数学公式</li><li>[x] 支持 Mermaid 图表</li><li>[ ] 支持脚注</li><li>[ ] 支持自定义主题</li></ul><h3 id="3-2-复杂表格">3.2 复杂表格</h3><table><thead><tr><th align="left">算法</th><th align="center">平均时间复杂度</th><th align="center">最坏时间复杂度</th><th align="center">空间复杂度</th><th align="center">稳定性</th></tr></thead><tbody><tr><td align="left">冒泡排序</td><td align="center"><span class="math-inline">O(n^2)</span></td><td align="center"><span class="math-inline">O(n^2)</span></td><td align="center"><span class="math-inline">O(1)</span></td><td align="center">✅ 稳定</td></tr><tr><td align="left">快速排序</td><td align="center"><span class="math-inline">O(n &#92;log n)</span></td><td align="center"><span class="math-inline">O(n^2)</span></td><td align="center"><span class="math-inline">O(&#92;log n)</span></td><td align="center">❌ 不稳定</td></tr><tr><td align="left">归并排序</td><td align="center"><span class="math-inline">O(n &#92;log n)</span></td><td align="center"><span class="math-inline">O(n &#92;log n)</span></td><td align="center"><span class="math-inline">O(n)</span></td><td align="center">✅ 稳定</td></tr><tr><td align="left">堆排序</td><td align="center"><span class="math-inline">O(n &#92;log n)</span></td><td align="center"><span class="math-inline">O(n &#92;log n)</span></td><td align="center"><span class="math-inline">O(1)</span></td><td align="center">❌ 不稳定</td></tr><tr><td align="left">计数排序</td><td align="center"><span class="math-inline">O(n + k)</span></td><td align="center"><span class="math-inline">O(n + k)</span></td><td align="center"><span class="math-inline">O(k)</span></td><td align="center">✅ 稳定</td></tr><tr><td align="left">基数排序</td><td align="center"><span class="math-inline">O(nk)</span></td><td align="center"><span class="math-inline">O(nk)</span></td><td align="center"><span class="math-inline">O(n + k)</span></td><td align="center">✅ 稳定</td></tr></tbody></table><h3 id="3-3-多语言代码块">3.3 多语言代码块</h3><p><strong>Swift:</strong></p><pre><code class="language-swift">protocol MarkdownRenderer {
+    associatedtype Output
+    func render(_ markdown: String) async throws -&gt; Output
+}
+
+struct HTMLRenderer: MarkdownRenderer {
+    typealias Output = String
+    
+    private let options: RenderOptions
+    
+    func render(_ markdown: String) async throws -&gt; String {
+        let ast = try Parser.parse(markdown)
+        return ast.accept(HTMLVisitor(options: options))
+    }
+}
+
+extension HTMLRenderer {
+    struct RenderOptions: Sendable {
+        var enableMath: Bool = true
+        var enableMermaid: Bool = true
+        var theme: Theme = .auto
+        
+        enum Theme: String, Sendable {
+            case light, dark, auto
+        }
+    }
+}
+</code></pre><p><strong>Python:</strong></p><pre><code class="language-python">from typing import TypeVar, Generic, Callable
+from dataclasses import dataclass, field
+from functools import reduce
+
+T = TypeVar('T')
+U = TypeVar('U')
+
+@dataclass(frozen=True)
+class Result(Generic[T]):
+    value: T | None = None
+    error: Exception | None = None
+    
+    def map(self, f: Callable[[T], U]) -&gt; 'Result[U]':
+        if self.error:
+            return Result(error=self.error)
+        try:
+            return Result(value=f(self.value))
+        except Exception as e:
+            return Result(error=e)
+    
+    def flat_map(self, f: Callable[[T], 'Result[U]']) -&gt; 'Result[U]':
+        if self.error:
+            return Result(error=self.error)
+        return f(self.value)
+
+pipeline = [
+    lambda x: Result(value=x * 2),
+    lambda x: Result(value=x + 10),
+    lambda x: Result(value=x ** 0.5),
+]
+
+result = reduce(lambda r, f: r.flat_map(f), pipeline, Result(value=42))
+</code></pre><p><strong>Rust:</strong></p><pre><code class="language-rust">use std::sync::Arc;
+use tokio::sync::RwLock;
+
+#[derive(Debug, Clone)]
+struct Cache&lt;K: Eq + Hash, V: Clone&gt; {
+    store: Arc&lt;RwLock&lt;HashMap&lt;K, (V, Instant)&gt;&gt;&gt;,
+    ttl: Duration,
+}
+
+impl&lt;K: Eq + Hash + Clone, V: Clone&gt; Cache&lt;K, V&gt; {
+    async fn get_or_insert&lt;F, Fut&gt;(&amp;self, key: K, f: F) -&gt; Result&lt;V, Error&gt;
+    where
+        F: FnOnce() -&gt; Fut,
+        Fut: Future&lt;Output = Result&lt;V, Error&gt;&gt;,
+    {
+        {
+            let store = self.store.read().await;
+            if let Some((value, inserted_at)) = store.get(&amp;key) {
+                if inserted_at.elapsed() &lt; self.ttl {
+                    return Ok(value.clone());
+                }
+            }
+        }
+        
+        let value = f().await?;
+        let mut store = self.store.write().await;
+        store.insert(key, (value.clone(), Instant::now()));
+        Ok(value)
+    }
+}
+</code></pre><h3 id="3-4-引用嵌套">3.4 引用嵌套</h3><blockquote><p><strong>定理（中心极限定理）</strong> 设 <span class="math-inline">X_1, X_2, &#92;ldots, X_n</span> 为独立同分布的随机变量序列，期望 <span class="math-inline">&#92;mu = E(X_i)</span>，方差 <span class="math-inline">&#92;sigma^2 = D(X_i) &gt; 0</span>，则： <div class="math-display">\lim_{n \to \infty} P\left(\frac{\sum_{i=1}^{n} X_i - n\mu}{\sigma\sqrt{n}} \leq x\right) = \Phi(x)</div> 其中 <span class="math-inline">&#92;Phi(x)</span> 是标准正态分布函数。 &gt; <strong>推论：</strong> 当 <span class="math-inline">n</span> 足够大时，<span class="math-inline">&#92;bar{X} &#92;sim N&#92;left(&#92;mu, &#92;frac{&#92;sigma^2}{n}&#92;right)</span> 近似成立。</p></blockquote><h3 id="3-5-脚注与链接混排">3.5 脚注与链接混排</h3><p>这段文字包含 <a href="https://example.com "示例"">内联链接</a>、<strong>粗体</strong>、<em>斜体</em>、<s>删除线</s>、<code>行内代码</code>，以及一个公式 <span class="math-inline">&#92;Gamma(n) = (n-1)!</span> 的复杂混排测试。</p><hr><h2 id="四-压力测试-公式与图表混合">四、压力测试：公式与图表混合</h2><p>下面测试公式与图表在同一章节中的渲染稳定性。</p><p>傅里叶级数将周期函数分解为三角函数之和：</p><div class="math-display">f(x) = \frac{a_0}{2} + \sum_{n=1}^{\infty} \left[ a_n \cos\left(\frac{2\pi n x}{T}\right) + b_n \sin\left(\frac{2\pi n x}{T}\right) \right]</div><p>其信号处理流程如下：</p><div class="mermaid">flowchart LR
+    A["原始信号 x(t)"] --&gt; B["采样 A/D"]
+    B --&gt; C["加窗 w(n)"]
+    C --&gt; D["FFT 变换"]
+    D --&gt; E{"频谱分析"}
+    E --&gt;|低频| F["低通滤波"]
+    E --&gt;|高频| G["高通滤波"]
+    E --&gt;|带通| H["带通滤波"]
+    F --&gt; I["IFFT 逆变换"]
+    G --&gt; I
+    H --&gt; I
+    I --&gt; J["重建信号 y(t)"]</div><p>其中 FFT 的复杂度为 <span class="math-inline">O(N &#92;log N)</span>，相较于 DFT 的 <span class="math-inline">O(N^2)</span> 有显著提升。离散傅里叶变换定义为：</p><div class="math-display">X[k] = \sum_{n=0}^{N-1} x[n] \cdot e^{-i \frac{2\pi}{N} kn}, \quad k = 0, 1, \ldots, N-1</div><hr><p><em>本文档由 md-glance 渲染能力测试生成，涵盖 Mermaid 图表 9 种、LaTeX 公式 20+ 组、GFM 扩展语法全覆盖。</em></p>
+    </article>
+    <script>
+        (function() {
+    'use strict';
+
+    // ── 执行顺序 ──────────────────────────────────────────────────
+    // 1. initHighlightJS  → 代码高亮（同步），高亮完成后插入行号 span
+    // 2. enhanceCodeBlocks→ 注入工具栏（在行号 span 之上）
+    // 3. initMermaid      → 异步渲染图表
+    // 4. initKaTeX        → 异步渲染公式
+    // 5. fadeOutSkeleton  → 骨架屏淡出（finally 保证必然执行）
+    // ─────────────────────────────────────────────────────────────
+
+    function initAll() {
+        try {
+            initHighlightJS();
+            enhanceCodeBlocks();
+            initMermaid();
+            initKaTeX();
+            notifyNative();
+        } finally {
+            fadeOutSkeleton();
+        }
+    }
+
+    // ── highlight.js：高亮代码块 ───────────────────────────────────
+    function initHighlightJS() {
+        function go() {
+            document.querySelectorAll('pre code').forEach(function(block) {
+                hljs.highlightElement(block);
+            });
+        }
+        if (typeof hljs !== 'undefined') { go(); return; }
+        var t = setInterval(function() {
+            if (typeof hljs !== 'undefined') { clearInterval(t); go(); }
+        }, 100);
+    }
+
+    // ── 代码块工具栏（复制 / 折叠）────────────────────────────────
+    function enhanceCodeBlocks() {
+        document.querySelectorAll('.markdown-body pre').forEach(function(pre) {
+            try {
+                var code = pre.querySelector('code');
+                if (!code) return;
+
+                var toolbar = document.createElement('div');
+                toolbar.className = 'code-toolbar';
+
+                function makeBtn(d, title) {
+                    var b = document.createElement('button');
+                    b.className = 'code-btn'; b.type = 'button'; b.title = title;
+                    b.innerHTML = '<svg viewBox="0 0 16 16" aria-hidden="true"><path d="' + d + '"/></svg>';
+                    return b;
+                }
+
+                // 复制按钮
+                var copyBtn = makeBtn('M4 2h7a1 1 0 0 1 1 1v9H4V2zm-1 1v10h8v1H3a1 1 0 0 1-1-1V3h1z', '复制代码');
+                copyBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var text = code.textContent;
+                    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdGlanceCopy) {
+                        window.webkit.messageHandlers.mdGlanceCopy.postMessage({ text: text });
+                    } else if (navigator.clipboard) {
+                        navigator.clipboard.writeText(text).catch(function(){});
+                    }
+                });
+
+                // 折叠按钮（超过 10 行才显示，默认展开）
+                var lineCount = (code.textContent || '').split('\n').length;
+                var foldBtn = makeBtn('M8 3L3 8h3v5h4V8h3L8 3zm0 9.5L5 9h2V4h2v5h2l-3 3.5z', '折叠/展开');
+                var isFolded = false;
+                foldBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    isFolded = !isFolded;
+                    pre.style.maxHeight = isFolded ? '6em' : '';
+                    pre.style.overflow  = isFolded ? 'hidden' : 'auto';
+                });
+
+                toolbar.appendChild(copyBtn);
+                if (lineCount > 10) toolbar.appendChild(foldBtn);
+                pre.appendChild(toolbar);
+            } catch(err) { /* 单个代码块出错不影响其余 */ }
+        });
+    }
+
+    // ── Mermaid：低级 render() API，支持点击预览 ──────────────────
+    function initMermaid() {
+        var els = document.querySelectorAll('.mermaid');
+        if (!els.length) return;
+
+        function doRender() {
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                securityLevel: 'loose',
+                flowchart: { useMaxWidth: true },
+                sequence:  { useMaxWidth: true },
+                gantt:     { useMaxWidth: true }
+            });
+            els.forEach(function(el, idx) {
+                var txt = el.textContent.trim();
+                var id  = 'mermaid-svg-' + idx + '-' + Date.now();
+                mermaid.render(id, txt).then(function(r) {
+                    el.innerHTML = r.svg;
+                    if (r.bindFunctions) r.bindFunctions(el);
+                    el.style.cursor = 'pointer';
+                    el.addEventListener('click', function() {
+                        var svg = el.querySelector('svg');
+                        if (!svg) return;
+                        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdGlanceRenderer) {
+                            window.webkit.messageHandlers.mdGlanceRenderer.postMessage({
+                                type: 'mermaidPreview', svg: svg.outerHTML
+                            });
+                        }
+                    });
+                }).catch(function(e) {
+                    el.innerHTML = '<pre style="color:red">Mermaid error: ' + (e.message || e) + '</pre>';
+                });
+            });
+        }
+
+        if (typeof mermaid !== 'undefined') {
+            mermaid.startOnLoad = false;
+            doRender();
+        } else {
+            var n = 0, t = setInterval(function() {
+                if (typeof mermaid !== 'undefined') {
+                    clearInterval(t);
+                    mermaid.startOnLoad = false;
+                    doRender();
+                } else if (++n > 50) { clearInterval(t); }
+            }, 100);
+        }
+    }
+
+    // ── KaTeX：渲染 math-display / math-inline ────────────────────
+    function initKaTeX() {
+        function go() {
+            document.querySelectorAll('.math-display').forEach(function(el) {
+                try {
+                    el.innerHTML = katex.renderToString(el.textContent.trim(),
+                        { displayMode: true, throwOnError: false });
+                } catch(e) {}
+            });
+            document.querySelectorAll('.math-inline').forEach(function(el) {
+                try {
+                    el.innerHTML = katex.renderToString(el.textContent.trim(),
+                        { displayMode: false, throwOnError: false });
+                } catch(e) {}
+            });
+        }
+        if (typeof katex !== 'undefined') { go(); return; }
+        var n = 0, t = setInterval(function() {
+            if (typeof katex !== 'undefined') { clearInterval(t); go(); }
+            else if (++n > 50) { clearInterval(t); }
+        }, 100);
+    }
+
+    function notifyNative() {
+        if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.mdGlanceRenderer) {
+            window.webkit.messageHandlers.mdGlanceRenderer.postMessage({ type: 'renderComplete' });
+        }
+    }
+
+    // ── 骨架屏淡出（position:fixed，不影响文档流）────────────────
+    function fadeOutSkeleton() {
+        var sk = document.getElementById('skeleton');
+        if (!sk || sk.dataset.faded === '1') return;
+        sk.dataset.faded = '1';
+        sk.style.animation  = 'none';
+        sk.style.transition = 'opacity 0.3s';
+        sk.style.opacity    = '0';
+        setTimeout(function() { if (sk.parentNode) sk.parentNode.removeChild(sk); }, 350);
+    }
+
+    function runInit() {
+        try { initAll(); } catch(e) { fadeOutSkeleton(); }
+        // 兜底：2.5 秒后强制淡出骨架屏
+        setTimeout(fadeOutSkeleton, 2500);
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', runInit);
+    } else {
+        runInit();
+    }
+})();
+    </script>
+</body>
+</html>

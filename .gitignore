@@ -19,9 +19,14 @@ xcuserdata/
 
 # Build artifacts
 build/
-*.app
-*.dmg
 *.dSYM/
+
+# 但保留 release 目录中的构建产物（供直接下载）
+!release/
+*.app
+!release/*.app
+*.dmg
+!release/*.dmg
 
 # IDE
 .vscode/
