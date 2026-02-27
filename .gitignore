@@ -1,0 +1,33 @@
+# Swift
+.swiftpm/
+.build/
+*.swiftmode
+*.swiftdeps
+*.swiftdoc
+*.swiftmodule
+
+# Xcode
+xcuserdata/
+*.xcuserstate
+*.xcscmblueprint
+*.xccheckout
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Build artifacts
+build/
+*.app
+*.dmg
+*.dSYM/
+
+# IDE
+.vscode/
+.idea/
+
+# Temporary files
+*.swp
+*.swo
+*~
