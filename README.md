@@ -26,7 +26,21 @@
 
 ## 📸 截图
 
+### 应用界面
+
 ![md-glance screenshot](md-glance-swift.png)
+
+### 渲染效果演示
+
+[**test-complex.md**](test-complex.md) 是一个完整的渲染能力测试文档，包含：
+
+- **Mermaid 图表**（9 种）：流程图、时序图、类图、状态图、甘特图、饼图、ER图、Git图、用户旅程图
+- **LaTeX 公式**（20+ 组）：行内/块级、矩阵、积分、求和、分段函数、方程组
+- **GFM 扩展语法**：表格、任务列表、多语言代码高亮、引用嵌套
+
+![rendering demo](test-complex-demo.png)
+
+> 💡 提示：克隆仓库后运行 `md-glance test-complex.md` 即可查看完整渲染效果
 
 ## 🚀 快速开始
 
