@@ -170,14 +170,13 @@ public final class MarkdownRenderer {
         return String(repeating: nbsp, count: leadingCount) + line[firstNonSpace...]
     }
 
-    /// 转义行内的 HTML 标签，避免 Ink 误将其解析为原始 HTML 块级元素。
+    /// 转义行内的代码围栏和 HTML 标签，避免 Ink 误解析。
     ///
     /// 问题场景：当一行中包含 ```mermaid 描述（非代码块开始），
-    /// 后面跟着 HTML 标签如 `<div class="mermaid">`，
-    /// Ink 会把 `<div>` 当作原始 HTML 块级元素的开始，
-    /// 导致后续内容被吸入这个未闭合的 div 中。
+    /// 1. Ink 会把 ``` 中的反引号当作内联代码标记
+    /// 2. Ink 会把后面的 HTML 标签当作原始 HTML 块级元素
     ///
-    /// 解决方案：检测这种模式，将行内的 `<` 和 `>` 转义为 `&lt;` 和 `&gt;`。
+    /// 解决方案：检测这种模式，将行内的 ``` 和 HTML 标签转义为 HTML 实体。
     private static func escapeInlineHTMLTags(_ line: String) -> String {
         // 检测是否包含 ``` 但不是以 ``` 开头（说明是行内描述，不是代码块开始）
         let trimmed = line.trimmingCharacters(in: .whitespaces)
@@ -185,37 +184,38 @@ public final class MarkdownRenderer {
             return line
         }
 
+        // 转义行内的 ``` 为 &#96;&#96;&#96;（反引号的 HTML 实体）
+        // 这样 Ink 就不会把它当作代码围栏或内联代码标记
+        var result = line.replacingOccurrences(of: "```", with: "&#96;&#96;&#96;")
+
         // 检测是否包含可能被误解析的 HTML 标签
-        // 只转义常见的块级元素标签，避免影响正常的内联代码
         let blockTags = ["<div", "<span", "<p>", "</p>", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6"]
         var hasBlockTag = false
         for tag in blockTags {
-            if line.contains(tag) {
+            if result.contains(tag) {
                 hasBlockTag = true
                 break
             }
         }
 
-        guard hasBlockTag else { return line }
+        guard hasBlockTag else { return result }
 
         // 转义行内的 HTML 标签
-        // 使用正则匹配 <tag...> 或 </tag> 模式
         guard let regex = try? NSRegularExpression(
             pattern: #"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>"#,
             options: []
-        ) else { return line }
+        ) else { return result }
 
-        let range = NSRange(line.startIndex..., in: line)
-        var result = line
+        let range = NSRange(result.startIndex..., in: result)
+        var finalResult = result
         var offset = 0
 
-        regex.enumerateMatches(in: line, options: [], range: range) { match, _, _ in
+        regex.enumerateMatches(in: result, options: [], range: range) { match, _, _ in
             guard let match = match else { return }
             let matchRange = match.range
-            guard let swiftRange = Range(matchRange, in: result) else { return }
+            guard let swiftRange = Range(matchRange, in: finalResult) else { return }
 
-            let original = String(result[swiftRange])
-            // 只转义块级元素标签
+            let original = String(finalResult[swiftRange])
             let shouldEscape = blockTags.contains { original.lowercased().hasPrefix($0.lowercased()) }
 
             if shouldEscape {
@@ -227,14 +227,14 @@ public final class MarkdownRenderer {
                     location: matchRange.location + offset,
                     length: matchRange.length
                 )
-                if let adjustedSwiftRange = Range(adjustedRange, in: result) {
-                    result.replaceSubrange(adjustedSwiftRange, with: escaped)
+                if let adjustedSwiftRange = Range(adjustedRange, in: finalResult) {
+                    finalResult.replaceSubrange(adjustedSwiftRange, with: escaped)
                     offset += escaped.count - original.count
                 }
             }
         }
 
-        return result
+        return finalResult
     }
 
     /// 单行内的 $$...$$ 替换为 <div class="math-display">，未匹配则返回 nil
