@@ -221,7 +221,16 @@ public final class MarkdownRenderer {
     // MARK: - HTML Template
 
     private func wrapInTemplate(html: String) -> String {
-        """
+        // 检测内容类型，决定是否需要加载特定库
+        let hasMath = html.contains("math-display") || html.contains("math-inline")
+        let hasMermaid = html.contains("class=\"mermaid\"")
+
+        // 按需加载的库
+        let katexCSS = hasMath ? "<link rel=\"stylesheet\" href=\"css/katex.min.css\">\n" : ""
+        let katexJS = hasMath ? "<script src=\"js/katex.min.js\"></script>\n" : ""
+        let mermaidJS = hasMermaid ? "<script src=\"js/mermaid.min.js\"></script>" : ""
+
+        return """
         <!DOCTYPE html>
         <html>
         <head>
@@ -233,18 +242,11 @@ public final class MarkdownRenderer {
                 \(Self.inlineCSS)
             </style>
 
-            <!-- KaTeX CSS -->
-            <link rel="stylesheet" href="css/katex.min.css">
-
-            <!-- highlight.js -->
+            <!-- highlight.js (始终加载，体积小 125KB) -->
             <link rel="stylesheet" href="css/github.min.css">
             <script src="js/highlight.min.js"></script>
 
-            <!-- KaTeX -->
-            <script src="js/katex.min.js"></script>
-
-            <!-- Mermaid -->
-            <script src="js/mermaid.min.js"></script>
+            \(katexCSS)
         </head>
         <body>
             <div id="skeleton" class="skeleton">
@@ -262,6 +264,7 @@ public final class MarkdownRenderer {
             <article class="markdown-body">
                 \(html)
             </article>
+            \(katexJS)\(mermaidJS)
             <script>
                 \(Self.initJS)
             </script>
