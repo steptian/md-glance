@@ -23,6 +23,9 @@ class DocumentManager: ObservableObject {
     @Published var currentHeadingSlug: String = ""
     @Published var showTOC: Bool = true
 
+    /// 渲染状态：用于淡入动画
+    @Published var isRendered: Bool = false
+
     // 文档统计
     @Published var charCount: Int = 0
     @Published var lineCount: Int = 0
@@ -45,6 +48,12 @@ class DocumentManager: ObservableObject {
         scrollPosition = 0
         currentHeadingSlug = ""
         tocItems = []
+        isRendered = false  // 重置渲染状态，触发淡入动画
+    }
+
+    /// 标记渲染完成
+    func markRendered() {
+        isRendered = true
     }
 
     func setWebView(_ webView: WKWebView?) {

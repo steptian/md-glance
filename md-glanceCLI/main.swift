@@ -39,6 +39,28 @@ struct MDGlanceCLI {
         }
     }
 
+    /// 查找项目根目录（通过 Package.swift 文件）
+    private static func findProjectRoot() -> String? {
+        // 从当前目录向上查找 Package.swift
+        var currentPath = FileManager.default.currentDirectoryPath
+
+        for _ in 0..<10 {
+            let packagePath = currentPath + "/Package.swift"
+            if FileManager.default.fileExists(atPath: packagePath) {
+                return currentPath
+            }
+
+            // 向上一级
+            let parent = URL(fileURLWithPath: currentPath).deletingLastPathComponent().path
+            if parent == currentPath {
+                break
+            }
+            currentPath = parent
+        }
+
+        return nil
+    }
+
     /// 打开 Markdown 文件
     /// - Parameter path: 文件路径
     private static func openFile(_ path: String) {
@@ -70,15 +92,64 @@ struct MDGlanceCLI {
             print("继续尝试打开...")
         }
 
-        // 使用 NSWorkspace 打开文件
-        // 这会使用注册的默认应用（md-glance）打开 .md 文件
-        let success = NSWorkspace.shared.open(fileURL)
+        // 查找 md-glance 应用或可执行文件
+        // 优先级：/Applications > ~/Applications > release > debug
+        // 优先使用已安装版本，确保单实例行为一致
+        let projectRoot = findProjectRoot()
+        let appLocations: [String] = [
+            "/Applications/md-glance.app",
+            NSHomeDirectory() + "/Applications/md-glance.app",
+            projectRoot.map { $0 + "/release/md-glance.app" },
+            projectRoot.map { $0 + "/.build/debug/md-glance" }  // 开发调试时使用
+        ].compactMap { $0 }
 
-        if success {
-            print("正在打开: \(fileURL.lastPathComponent)")
+        var appPath: String?
+        var isAppBundle = false
+        for location in appLocations {
+            let expanded = NSString(string: location).expandingTildeInPath
+            if FileManager.default.fileExists(atPath: expanded) {
+                appPath = expanded
+                isAppBundle = expanded.hasSuffix(".app")
+                break
+            }
+        }
+
+        // 如果找不到应用，尝试使用默认应用
+        guard let foundPath = appPath else {
+            // 使用系统默认应用打开
+            let success = NSWorkspace.shared.open(fileURL)
+            if success {
+                print("正在打开: \(fileURL.lastPathComponent)")
+            } else {
+                print("错误: 无法打开文件")
+                print("请确保 md-glance 应用已正确安装")
+                exit(1)
+            }
+            return
+        }
+
+        // 根据类型选择启动方式
+        if isAppBundle {
+            // .app 包：直接运行可执行文件
+            // 这样可以确保命令行参数被正确传递
+            openFileDirectly(appPath: foundPath, fileURL: fileURL)
         } else {
-            print("错误: 无法打开文件")
-            print("请确保 md-glance 应用已正确安装")
+            // 二进制文件：直接运行
+            openFileDirectly(appPath: foundPath, fileURL: fileURL)
+        }
+    }
+
+    /// 直接运行应用并传递文件参数
+    private static func openFileDirectly(appPath: String, fileURL: URL) {
+        let process = Process()
+        let executablePath = appPath.hasSuffix(".app") ? appPath + "/Contents/MacOS/md-glance" : appPath
+        process.executableURL = URL(fileURLWithPath: executablePath)
+        process.arguments = [fileURL.path]
+        do {
+            try process.run()
+            print("正在打开: \(fileURL.lastPathComponent)")
+        } catch {
+            print("错误: \(error.localizedDescription)")
             exit(1)
         }
     }
@@ -86,18 +157,18 @@ struct MDGlanceCLI {
     /// 打印使用说明
     private static func printUsage() {
         print("""
-        md-glance - macOS Markdown 预览工具
+        mdg - macOS Markdown 预览工具
 
         用法:
-            md-glance <file.md>
+            mdg <file.md>
 
         参数:
             file.md    要预览的 Markdown 文件路径
 
         示例:
-            md-glance README.md
-            md-glance ~/Documents/notes.md
-            md-glance ./docs/spec.md
+            mdg README.md
+            mdg ~/Documents/notes.md
+            mdg ./docs/spec.md
 
         说明:
             - 支持绝对路径和相对路径

@@ -338,6 +338,8 @@ struct MarkdownWebViewWrapper: View {
                 documentManager.setWebView(createdWebView)
             },
             onRenderComplete: {
+                // 标记渲染完成，触发淡入动画
+                documentManager.markRendered()
                 if documentManager.scrollPosition > 0 {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         restoreScrollPosition()
@@ -354,6 +356,8 @@ struct MarkdownWebViewWrapper: View {
             },
             onFileDrop: onFileDrop
         )
+        .opacity(documentManager.isRendered ? 1 : 0)
+        .animation(.easeIn(duration: 0.25), value: documentManager.isRendered)
     }
 
     private func restoreScrollPosition() {
