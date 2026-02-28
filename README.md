@@ -28,22 +28,7 @@
 
 ### 下载安装
 
-**方式一：直接下载（推荐）**
-
-从本仓库直接下载预编译版本：
-
-```bash
-# 克隆仓库（包含预编译应用）
-git clone https://github.com/steptian/md-glance.git
-cd md-glance/release
-
-# 双击打开 md-glance.dmg 安装
-# 或直接运行 md-glance.app
-```
-
-**方式二：下载发布版本**
-
-从仓库的 [release 目录](https://github.com/steptian/md-glance/tree/main/release) 下载最新的 `.dmg` 安装包。
+从 [Releases](https://github.com/steptian/md-glance/releases) 下载最新的 `.dmg` 安装包，双击安装即可。
 
 ### 从源码构建
 

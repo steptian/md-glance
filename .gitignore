@@ -21,12 +21,8 @@ xcuserdata/
 build/
 *.dSYM/
 
-# 但保留 release 目录中的构建产物（供直接下载）
-!release/
-*.app
-!release/*.app
-*.dmg
-!release/*.dmg
+# Release 目录（使用 GitHub Releases 管理二进制文件）
+release/
 
 # IDE
 .vscode/
