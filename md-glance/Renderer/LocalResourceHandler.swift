@@ -19,22 +19,28 @@ final class LocalResourceHandler: NSObject, WKURLSchemeHandler {
         }
 
         let path = url.path
-        guard path.hasPrefix("/res/") else {
+
+        // 支持两种路径格式:
+        // 1. /res/{subpath} - 标准资源路径
+        // 2. /fonts/{filename} - KaTeX 字体路径（CSS 相对路径引用）
+        var relativePath: String
+
+        if path.hasPrefix("/res/") {
+            relativePath = String(path.dropFirst("/res/".count))
+        } else if path.hasPrefix("/fonts/") {
+            // KaTeX 字体路径，映射到 fonts 目录
+            relativePath = "fonts/" + String(path.dropFirst("/fonts/".count))
+        } else {
             let err = makeError(-2, "Unsupported path: \(path)")
             NSLog("[LocalResourceHandler] ❌ %@", err.localizedDescription)
             urlSchemeTask.didFailWithError(err)
             return
         }
 
-        let relativePath = String(path.dropFirst("/res/".count))
-
         var fileURL = Bundle.module.bundleURL.appendingPathComponent("Resources")
         for component in relativePath.split(separator: "/") {
             fileURL = fileURL.appendingPathComponent(String(component))
         }
-
-        NSLog("[LocalResourceHandler] 📦 bundle=%@ file=%@",
-              Bundle.module.bundleURL.path, fileURL.path)
 
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
             let err = makeError(-3, "File not found: \(fileURL.path)")

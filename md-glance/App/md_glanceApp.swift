@@ -72,8 +72,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] ✅ 处理文件打开: \(fileURL.lastPathComponent)")
         hasOpenedFile = true
 
-        // 更新全局状态
+        // 激活应用并置顶窗口
         DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+
+            // 确保窗口显示在最前面
+            if let window = NSApp.windows.first {
+                window.makeKeyAndOrderFront(nil)
+            }
+
             GlobalFileState.shared.currentFileURL = fileURL
         }
     }
@@ -81,23 +88,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] 🚀 应用启动完成")
 
-        // 先检查命令行参数
-        if CommandLine.arguments.count > 1 {
-            for i in 1..<CommandLine.arguments.count {
-                let arg = CommandLine.arguments[i]
-                if !arg.hasPrefix("-") {
-                    let path = (arg as NSString).expandingTildeInPath
-                    if FileManager.default.fileExists(atPath: path) {
-                        NSLog("[AppDelegate] 📂 命令行参数文件: \(path)")
-                        handleFileOpen(path)
-                        break
-                    }
-                }
+        // 激活应用并确保窗口在最前面
+        DispatchQueue.main.async {
+            NSApp.activate(ignoringOtherApps: true)
+            if let window = NSApp.windows.first {
+                window.makeKeyAndOrderFront(nil)
             }
         }
 
-        // 不再自动关闭窗口 - 窗口需要保持打开以接收文件打开事件
-        // 如果用户启动应用时没有文件，会显示空状态视图
+        // 检查命令行参数（仅在没有通过 openFiles 处理时）
+        // 注意：openFiles 已经处理了文件，这里不需要重复处理
     }
 }
 
@@ -140,6 +140,13 @@ struct md_glanceApp: App {
         }
 
         NSLog("[handleFileURL] ✅ 正在打开文件: \(url.lastPathComponent)")
+
+        // 激活应用并置顶窗口
+        NSApp.activate(ignoringOtherApps: true)
+        if let window = NSApp.windows.first {
+            window.makeKeyAndOrderFront(nil)
+        }
+
         GlobalFileState.shared.currentFileURL = url
     }
 
