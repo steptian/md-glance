@@ -186,7 +186,7 @@ public final class MarkdownRenderer {
 
         // 转义行内的 ``` 为 &#96;&#96;&#96;（反引号的 HTML 实体）
         // 这样 Ink 就不会把它当作代码围栏或内联代码标记
-        var result = line.replacingOccurrences(of: "```", with: "&#96;&#96;&#96;")
+        let result = line.replacingOccurrences(of: "```", with: "&#96;&#96;&#96;")
 
         // 检测是否包含可能被误解析的 HTML 标签
         let blockTags = ["<div", "<span", "<p>", "</p>", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6"]
