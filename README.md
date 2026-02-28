@@ -40,7 +40,7 @@
 
 ![rendering demo](test-complex-demo.png)
 
-> 💡 提示：克隆仓库后运行 `md-glance test-complex.md` 即可查看完整渲染效果
+> 💡 提示：安装 CLI 后运行 `mdg test-complex.md` 即可查看完整渲染效果
 
 ## 🚀 快速开始
 
@@ -130,15 +130,23 @@ md-glance/
 2. 使用 `⌘O` 打开 Markdown 文件，或直接拖拽文件到窗口
 3. 点击工具栏按钮切换目录显示、复制全文等
 
-### 命令行工具
+### 命令行工具 (mdg)
 
 ```bash
-# 预览单个文件
-md-glanceCLI README.md
+# 安装 CLI 工具
+swift build -c release --product mdg
+cp .build/release/mdg ~/.local/bin/mdg
 
-# 预览多个文件
-md-glanceCLI *.md
+# 预览文件
+mdg README.md
+mdg ~/Documents/notes.md
+mdg ./docs/spec.md
 ```
+
+**功能说明：**
+- 支持绝对路径和相对路径
+- 支持 `~` 表示主目录
+- 自动查找已安装的 md-glance 应用
 
 ### QuickLook
 
