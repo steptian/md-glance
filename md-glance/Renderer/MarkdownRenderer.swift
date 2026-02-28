@@ -137,7 +137,14 @@ public final class MarkdownRenderer {
                 }
             } else {
                 // 兼容非标准写法：行首 4 空格不当作缩进代码块，用 U+00A0 替换避免 Ink 整段解析为 pre
-                let normalized = Self.disableIndentedCodeBlock(content)
+                var normalized = Self.disableIndentedCodeBlock(content)
+
+                // 修复：转义行内的 HTML 标签，避免 Ink 误解析
+                // 场景：列表项中包含 ```mermaid 描述，后面跟着 HTML 标签
+                // 例如："- MermaidModifier: ```mermaid 代码块 → `<div class=\"mermaid\">`"
+                // Ink 会把 <div> 当作原始 HTML 块级元素，导致后续内容被吸入
+                normalized = Self.escapeInlineHTMLTags(normalized)
+
                 result.append(prefix + Self.preprocessInlineMath(normalized))
             }
         }
@@ -161,6 +168,73 @@ public final class MarkdownRenderer {
         let leadingCount = line.distance(from: line.startIndex, to: firstNonSpace)
         guard leadingCount > 0 else { return line }
         return String(repeating: nbsp, count: leadingCount) + line[firstNonSpace...]
+    }
+
+    /// 转义行内的 HTML 标签，避免 Ink 误将其解析为原始 HTML 块级元素。
+    ///
+    /// 问题场景：当一行中包含 ```mermaid 描述（非代码块开始），
+    /// 后面跟着 HTML 标签如 `<div class="mermaid">`，
+    /// Ink 会把 `<div>` 当作原始 HTML 块级元素的开始，
+    /// 导致后续内容被吸入这个未闭合的 div 中。
+    ///
+    /// 解决方案：检测这种模式，将行内的 `<` 和 `>` 转义为 `&lt;` 和 `&gt;`。
+    private static func escapeInlineHTMLTags(_ line: String) -> String {
+        // 检测是否包含 ``` 但不是以 ``` 开头（说明是行内描述，不是代码块开始）
+        let trimmed = line.trimmingCharacters(in: .whitespaces)
+        guard trimmed.contains("```") && !trimmed.hasPrefix("```") else {
+            return line
+        }
+
+        // 检测是否包含可能被误解析的 HTML 标签
+        // 只转义常见的块级元素标签，避免影响正常的内联代码
+        let blockTags = ["<div", "<span", "<p>", "</p>", "<h1", "<h2", "<h3", "<h4", "<h5", "<h6"]
+        var hasBlockTag = false
+        for tag in blockTags {
+            if line.contains(tag) {
+                hasBlockTag = true
+                break
+            }
+        }
+
+        guard hasBlockTag else { return line }
+
+        // 转义行内的 HTML 标签
+        // 使用正则匹配 <tag...> 或 </tag> 模式
+        guard let regex = try? NSRegularExpression(
+            pattern: #"</?[a-zA-Z][a-zA-Z0-9]*[^>]*>"#,
+            options: []
+        ) else { return line }
+
+        let range = NSRange(line.startIndex..., in: line)
+        var result = line
+        var offset = 0
+
+        regex.enumerateMatches(in: line, options: [], range: range) { match, _, _ in
+            guard let match = match else { return }
+            let matchRange = match.range
+            guard let swiftRange = Range(matchRange, in: result) else { return }
+
+            let original = String(result[swiftRange])
+            // 只转义块级元素标签
+            let shouldEscape = blockTags.contains { original.lowercased().hasPrefix($0.lowercased()) }
+
+            if shouldEscape {
+                let escaped = original
+                    .replacingOccurrences(of: "<", with: "&lt;")
+                    .replacingOccurrences(of: ">", with: "&gt;")
+
+                let adjustedRange = NSRange(
+                    location: matchRange.location + offset,
+                    length: matchRange.length
+                )
+                if let adjustedSwiftRange = Range(adjustedRange, in: result) {
+                    result.replaceSubrange(adjustedSwiftRange, with: escaped)
+                    offset += escaped.count - original.count
+                }
+            }
+        }
+
+        return result
     }
 
     /// 单行内的 $$...$$ 替换为 <div class="math-display">，未匹配则返回 nil
@@ -225,7 +299,12 @@ public final class MarkdownRenderer {
         let hasMath = html.contains("math-display") || html.contains("math-inline")
         let hasMermaid = html.contains("class=\"mermaid\"")
 
-        // 按需加载的库
+        // 预加载关键资源（优先级最高）
+        let preloadHighlightJS = "<link rel=\"preload\" href=\"js/highlight.min.js\" as=\"script\">\n"
+        let preloadKatex = hasMath ? "<link rel=\"preload\" href=\"js/katex.min.js\" as=\"script\">\n<link rel=\"preload\" href=\"css/katex.min.css\" as=\"style\">\n" : ""
+        let preloadMermaid = hasMermaid ? "<link rel=\"preload\" href=\"js/mermaid.min.js\" as=\"script\">\n" : ""
+
+        // 按需加载的库（同步加载，确保顺序正确）
         let katexCSS = hasMath ? "<link rel=\"stylesheet\" href=\"css/katex.min.css\">\n" : ""
         let katexJS = hasMath ? "<script src=\"js/katex.min.js\"></script>\n" : ""
         let mermaidJS = hasMermaid ? "<script src=\"js/mermaid.min.js\"></script>" : ""
@@ -238,11 +317,14 @@ public final class MarkdownRenderer {
             <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Markdown Preview</title>
 
+            <!-- 预加载关键资源 -->
+            \(preloadHighlightJS)\(preloadKatex)\(preloadMermaid)
+
             <style>
                 \(Self.inlineCSS)
             </style>
 
-            <!-- highlight.js (始终加载，体积小 125KB) -->
+            <!-- highlight.js (始终加载) -->
             <link rel="stylesheet" href="css/github.min.css">
             <script src="js/highlight.min.js"></script>
 
@@ -450,45 +532,48 @@ public final class MarkdownRenderer {
         }
     """
 
-    /// 前端初始化脚本 —— 仅负责"渲染"预标记元素
+    /// 前端初始化脚本 —— 优化加载速度
+    /// 1. 异步加载 JS 库（async）
+    /// 2. 代码高亮完成后立即淡出骨架屏
+    /// 3. KaTeX 和 Mermaid 并行渲染
     static let initJS: String = """
     (function() {
         'use strict';
 
-        // ── 执行顺序 ──────────────────────────────────────────────────
-        // 1. initHighlightJS  → 代码高亮（同步），高亮完成后插入行号 span
-        // 2. enhanceCodeBlocks→ 注入工具栏（在行号 span 之上）
-        // 3. initMermaid      → 异步渲染图表
-        // 4. initKaTeX        → 异步渲染公式
-        // 5. fadeOutSkeleton  → 骨架屏淡出（finally 保证必然执行）
-        // ─────────────────────────────────────────────────────────────
-
-        function initAll() {
-            try {
-                initHighlightJS();
-                enhanceCodeBlocks();
-                initMermaid();
-                initKaTeX();
-                notifyNative();
-            } finally {
-                fadeOutSkeleton();
-            }
+        // ── 通用工具：等待库加载 ───────────────────────────────────────
+        function waitForLib(name, timeout) {
+            return new Promise(function(resolve) {
+                if (typeof window[name] !== 'undefined') {
+                    resolve(true);
+                    return;
+                }
+                var elapsed = 0;
+                var interval = setInterval(function() {
+                    if (typeof window[name] !== 'undefined') {
+                        clearInterval(interval);
+                        resolve(true);
+                    } else if ((elapsed += 50) > (timeout || 3000)) {
+                        clearInterval(interval);
+                        resolve(false);
+                    }
+                }, 50);
+            });
         }
 
-        // ── highlight.js：高亮代码块 ───────────────────────────────────
-        function initHighlightJS() {
-            function go() {
+        // ── 代码高亮（快速，优先执行）────────────────────────────────
+        async function initHighlightJS() {
+            var loaded = await waitForLib('hljs', 2000);
+            if (loaded) {
                 document.querySelectorAll('pre code').forEach(function(block) {
                     hljs.highlightElement(block);
                 });
             }
-            if (typeof hljs !== 'undefined') { go(); return; }
-            var t = setInterval(function() {
-                if (typeof hljs !== 'undefined') { clearInterval(t); go(); }
-            }, 100);
+            enhanceCodeBlocks();
+            // 代码高亮完成后立即淡出骨架屏
+            fadeOutSkeleton();
         }
 
-        // ── 代码块工具栏（复制 / 折叠）────────────────────────────────
+        // ── 代码块工具栏 ─────────────────────────────────────────────
         function enhanceCodeBlocks() {
             document.querySelectorAll('.markdown-body pre').forEach(function(pre) {
                 try {
@@ -505,7 +590,6 @@ public final class MarkdownRenderer {
                         return b;
                     }
 
-                    // 复制按钮
                     var copyBtn = makeBtn('M4 2h7a1 1 0 0 1 1 1v9H4V2zm-1 1v10h8v1H3a1 1 0 0 1-1-1V3h1z', '复制代码');
                     copyBtn.addEventListener('click', function(e) {
                         e.stopPropagation();
@@ -517,7 +601,6 @@ public final class MarkdownRenderer {
                         }
                     });
 
-                    // 折叠按钮（超过 10 行才显示，默认展开）
                     var lineCount = (code.textContent || '').split('\\n').length;
                     var foldBtn = makeBtn('M8 3L3 8h3v5h4V8h3L8 3zm0 9.5L5 9h2V4h2v5h2l-3 3.5z', '折叠/展开');
                     var isFolded = false;
@@ -531,25 +614,58 @@ public final class MarkdownRenderer {
                     toolbar.appendChild(copyBtn);
                     if (lineCount > 10) toolbar.appendChild(foldBtn);
                     pre.appendChild(toolbar);
-                } catch(err) { /* 单个代码块出错不影响其余 */ }
+                } catch(err) {}
             });
         }
 
-        // ── Mermaid：低级 render() API，支持点击预览 ──────────────────
-        function initMermaid() {
+        // ── KaTeX 渲染（返回 Promise）────────────────────────────────
+        async function initKaTeX() {
+            var mathDisplay = document.querySelectorAll('.math-display');
+            var mathInline = document.querySelectorAll('.math-inline');
+            if (!mathDisplay.length && !mathInline.length) return;
+
+            var loaded = await waitForLib('katex', 3000);
+            if (!loaded) return;
+
+            mathDisplay.forEach(function(el) {
+                try {
+                    el.innerHTML = katex.renderToString(el.textContent.trim(),
+                        { displayMode: true, throwOnError: false });
+                } catch(e) {}
+            });
+            mathInline.forEach(function(el) {
+                try {
+                    el.innerHTML = katex.renderToString(el.textContent.trim(),
+                        { displayMode: false, throwOnError: false });
+                } catch(e) {}
+            });
+        }
+
+        // ── Mermaid 渲染（返回 Promise）────────────────────────────────
+        async function initMermaid() {
             var els = document.querySelectorAll('.mermaid');
+            console.log('[md-glance] Found', els.length, 'mermaid elements');
             if (!els.length) return;
 
-            function doRender() {
-                mermaid.initialize({
-                    startOnLoad: false,
-                    theme: 'default',
-                    securityLevel: 'loose',
-                    flowchart: { useMaxWidth: true },
-                    sequence:  { useMaxWidth: true },
-                    gantt:     { useMaxWidth: true }
-                });
-                els.forEach(function(el, idx) {
+            console.log('[md-glance] Waiting for mermaid library...');
+            var loaded = await waitForLib('mermaid', 5000);
+            console.log('[md-glance] Mermaid loaded:', loaded);
+            if (!loaded) {
+                console.error('[md-glance] Mermaid library failed to load');
+                return;
+            }
+
+            mermaid.initialize({
+                startOnLoad: false,
+                theme: 'default',
+                securityLevel: 'loose',
+                flowchart: { useMaxWidth: true },
+                sequence:  { useMaxWidth: true },
+                gantt:     { useMaxWidth: true }
+            });
+
+            var promises = Array.from(els).map(function(el, idx) {
+                return new Promise(function(resolve) {
                     var txt = el.textContent.trim();
                     var id  = 'mermaid-svg-' + idx + '-' + Date.now();
                     mermaid.render(id, txt).then(function(r) {
@@ -565,47 +681,15 @@ public final class MarkdownRenderer {
                                 });
                             }
                         });
+                        resolve();
                     }).catch(function(e) {
                         el.innerHTML = '<pre style="color:red">Mermaid error: ' + (e.message || e) + '</pre>';
+                        resolve();
                     });
                 });
-            }
+            });
 
-            if (typeof mermaid !== 'undefined') {
-                mermaid.startOnLoad = false;
-                doRender();
-            } else {
-                var n = 0, t = setInterval(function() {
-                    if (typeof mermaid !== 'undefined') {
-                        clearInterval(t);
-                        mermaid.startOnLoad = false;
-                        doRender();
-                    } else if (++n > 50) { clearInterval(t); }
-                }, 100);
-            }
-        }
-
-        // ── KaTeX：渲染 math-display / math-inline ────────────────────
-        function initKaTeX() {
-            function go() {
-                document.querySelectorAll('.math-display').forEach(function(el) {
-                    try {
-                        el.innerHTML = katex.renderToString(el.textContent.trim(),
-                            { displayMode: true, throwOnError: false });
-                    } catch(e) {}
-                });
-                document.querySelectorAll('.math-inline').forEach(function(el) {
-                    try {
-                        el.innerHTML = katex.renderToString(el.textContent.trim(),
-                            { displayMode: false, throwOnError: false });
-                    } catch(e) {}
-                });
-            }
-            if (typeof katex !== 'undefined') { go(); return; }
-            var n = 0, t = setInterval(function() {
-                if (typeof katex !== 'undefined') { clearInterval(t); go(); }
-                else if (++n > 50) { clearInterval(t); }
-            }, 100);
+            await Promise.all(promises);
         }
 
         function notifyNative() {
@@ -614,27 +698,40 @@ public final class MarkdownRenderer {
             }
         }
 
-        // ── 骨架屏淡出（position:fixed，不影响文档流）────────────────
+        // ── 骨架屏淡出 ────────────────────────────────────────────────
         function fadeOutSkeleton() {
             var sk = document.getElementById('skeleton');
             if (!sk || sk.dataset.faded === '1') return;
             sk.dataset.faded = '1';
             sk.style.animation  = 'none';
-            sk.style.transition = 'opacity 0.3s';
+            sk.style.transition = 'opacity 0.2s';
             sk.style.opacity    = '0';
-            setTimeout(function() { if (sk.parentNode) sk.parentNode.removeChild(sk); }, 350);
+            setTimeout(function() { if (sk.parentNode) sk.parentNode.removeChild(sk); }, 250);
         }
 
-        function runInit() {
-            try { initAll(); } catch(e) { fadeOutSkeleton(); }
-            // 兜底：2.5 秒后强制淡出骨架屏
-            setTimeout(fadeOutSkeleton, 2500);
+        // ── 主初始化流程 ──────────────────────────────────────────────
+        async function initAll() {
+            try {
+                // 1. 代码高亮（快速），完成后立即淡出骨架屏
+                await initHighlightJS();
+
+                // 2. 并行渲染 KaTeX 和 Mermaid（后台执行）
+                Promise.all([initKaTeX(), initMermaid()]).then(function() {
+                    notifyNative();
+                }).catch(function() {});
+
+            } catch(e) {
+                fadeOutSkeleton();
+            }
+
+            // 兜底：1秒后强制淡出（减少等待时间）
+            setTimeout(fadeOutSkeleton, 500);
         }
 
         if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', runInit);
+            document.addEventListener('DOMContentLoaded', initAll);
         } else {
-            runInit();
+            initAll();
         }
     })();
     """

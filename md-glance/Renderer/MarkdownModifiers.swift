@@ -19,18 +19,35 @@ import Ink
 func makeMermaidModifier() -> Modifier {
     Modifier(target: .codeBlocks) { html, markdown in
         let raw = String(markdown)
-        guard raw.hasPrefix("```mermaid") else { return html }
 
+        // 严格匹配完整的 mermaid 代码块
+        // Ink 传递的 markdown 格式: "```mermaid\ncode\n```"
         let lines = raw.components(separatedBy: "\n")
+        guard lines.count >= 2 else { return html }
+
+        // 检查第一行：必须是严格的 ```mermaid（可选尾部空格）
+        guard let firstLine = lines.first else { return html }
+        let trimmedFirst = firstLine.trimmingCharacters(in: .whitespaces)
+        guard trimmedFirst == "```mermaid" else { return html }
+
+        // 检查最后一行：必须是严格的 ```（可选前后空格）
+        guard let lastLine = lines.last else { return html }
+        let trimmedLast = lastLine.trimmingCharacters(in: .whitespaces)
+        guard trimmedLast == "```" else { return html }
+
+        // 提取代码内容（去掉首尾标记行和空行）
         let code = lines
             .dropFirst()
-            .drop(while: { $0.isEmpty })
+            .dropLast()
+            .drop(while: { $0.trimmingCharacters(in: .whitespaces).isEmpty })
             .reversed().drop(while: {
-                $0.trimmingCharacters(in: .whitespaces) == "```" ||
                 $0.trimmingCharacters(in: .whitespaces).isEmpty
             }).reversed()
             .joined(separator: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // 确保代码不为空
+        guard !code.isEmpty else { return html }
 
         let escaped = code
             .replacingOccurrences(of: "&", with: "&amp;")
