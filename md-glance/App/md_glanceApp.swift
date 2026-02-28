@@ -7,129 +7,140 @@
 
 import SwiftUI
 import UniformTypeIdentifiers
+import Combine
 
-// MARK: - AppDelegate 处理单实例文件打开
+// 全局文件状态 - 用于跨视图共享文件 URL
+class GlobalFileState: ObservableObject {
+    static let shared = GlobalFileState()
+    @Published var currentFileURL: URL?
+    private init() {}
+}
 
+// AppDelegate - 处理文件打开
 class AppDelegate: NSObject, NSApplicationDelegate {
+    private var hasOpenedFile = false
 
-    /// 处理单实例模式下通过命令行打开文件
-    /// 当应用已在运行时，系统会调用此方法
-    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
-        print("[AppDelegate] 📂 application(_:openFile:) 被调用: \(filename)")
-        let fileURL = URL(fileURLWithPath: filename)
-        openFileURL(fileURL)
+    func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
+        NSLog("[AppDelegate] applicationShouldOpenUntitledFile: true (允许创建窗口以接收文件打开事件)")
         return true
     }
 
-    /// 处理多个文件打开（Apple Event 方式）
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        NSLog("[AppDelegate] applicationShouldHandleReopen: hasVisibleWindows=\(flag)")
+        return true
+    }
+
+    // 处理单个文件打开
+    func application(_ sender: NSApplication, openFile filename: String) -> Bool {
+        NSLog("[AppDelegate] 📂 openFile: \(filename)")
+        handleFileOpen(filename)
+        return true
+    }
+
+    // 处理多个文件打开
     func application(_ sender: NSApplication, openFiles filenames: [String]) {
-        print("[AppDelegate] 📂 application(_:openFiles:) 被调用: \(filenames)")
+        NSLog("[AppDelegate] 📂 openFiles: \(filenames)")
         for filename in filenames {
-            let fileURL = URL(fileURLWithPath: filename)
-            openFileURL(fileURL)
+            handleFileOpen(filename)
         }
     }
 
-    private func openFileURL(_ fileURL: URL) {
-        // 检查文件是否存在
+    // 处理 URL 打开（macOS 10.13+）
+    func application(_ application: NSApplication, open urls: [URL]) {
+        NSLog("[AppDelegate] 📂 open URLs: \(urls.map { $0.lastPathComponent })")
+        for url in urls {
+            handleFileURL(url)
+        }
+    }
+
+    private func handleFileOpen(_ filename: String) {
+        let fileURL = URL(fileURLWithPath: filename)
+        handleFileURL(fileURL)
+    }
+
+    private func handleFileURL(_ fileURL: URL) {
         guard FileManager.default.fileExists(atPath: fileURL.path) else {
-            print("[AppDelegate] ❌ 文件不存在: \(fileURL.path)")
+            NSLog("[AppDelegate] ❌ 文件不存在: \(fileURL.path)")
             return
         }
 
-        // 激活应用
-        NSApp.activate(ignoringOtherApps: true)
+        guard fileURL.pathExtension == "md" || fileURL.pathExtension == "markdown" else {
+            NSLog("[AppDelegate] ⚠️ 非 Markdown 文件: \(fileURL.pathExtension)")
+            return
+        }
 
-        // 在主线程打开文件
+        NSLog("[AppDelegate] ✅ 处理文件打开: \(fileURL.lastPathComponent)")
+        hasOpenedFile = true
+
+        // 更新全局状态
         DispatchQueue.main.async {
-            print("[AppDelegate] ✅ 正在打开文件: \(fileURL.lastPathComponent)")
-            self.openFileInNewWindow(fileURL)
+            GlobalFileState.shared.currentFileURL = fileURL
         }
     }
 
-    private func openFileInNewWindow(_ url: URL) {
-        let newContentView = ContentView(fileURL: url)
-        let newWindow = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 800, height: 600),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
-            backing: .buffered,
-            defer: false
-        )
-        newWindow.contentView = NSHostingView(rootView: newContentView)
-        newWindow.title = url.lastPathComponent
-        newWindow.center()
-        newWindow.makeKeyAndOrderFront(nil)
-        print("[AppDelegate] 🪟 新窗口已创建: \(url.lastPathComponent)")
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSLog("[AppDelegate] 🚀 应用启动完成")
+
+        // 先检查命令行参数
+        if CommandLine.arguments.count > 1 {
+            for i in 1..<CommandLine.arguments.count {
+                let arg = CommandLine.arguments[i]
+                if !arg.hasPrefix("-") {
+                    let path = (arg as NSString).expandingTildeInPath
+                    if FileManager.default.fileExists(atPath: path) {
+                        NSLog("[AppDelegate] 📂 命令行参数文件: \(path)")
+                        handleFileOpen(path)
+                        break
+                    }
+                }
+            }
+        }
+
+        // 不再自动关闭窗口 - 窗口需要保持打开以接收文件打开事件
+        // 如果用户启动应用时没有文件，会显示空状态视图
     }
 }
 
 @main
 struct md_glanceApp: App {
-    /// 注册 AppDelegate
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    /// 从命令行参数解析的初始文件 URL
-    @State private var initialFileURL: URL?
-
-    init() {
-        // 解析命令行参数，支持启动时指定文件
-        // 用法: md-glance /path/to/file.md
-        let filePath = Self.parseCommandLineFilePath()
-        _initialFileURL = State(initialValue: filePath.map { URL(fileURLWithPath: $0) })
-
-        // 确保应用窗口激活（当从命令行启动时）
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            NSApp.activate(ignoringOtherApps: true)
-            // 强制显示窗口
-            if let window = NSApp.windows.first {
-                window.makeKeyAndOrderFront(nil)
-            }
-        }
-    }
 
     var body: some Scene {
         WindowGroup {
-            ContentView(fileURL: initialFileURL)
+            SharedContentView()
                 .frame(minWidth: 600, minHeight: 400)
                 .onAppear {
-                    // 确保窗口在出现时激活
-                    DispatchQueue.main.async {
-                        NSApp.activate(ignoringOtherApps: true)
-                    }
+                    NSLog("[WindowGroup] Window appeared")
+                }
+                // 处理应用已运行时的文件打开
+                .onOpenURL { url in
+                    NSLog("[onOpenURL] 📂 收到文件: \(url.lastPathComponent)")
+                    handleFileURL(url)
                 }
         }
         .commands {
             CommandGroup(replacing: .newItem) {
-                Button("Open...") {
+                Button("打开...") {
                     openFile()
                 }
                 .keyboardShortcut("o", modifiers: .command)
             }
-            CommandGroup(replacing: .help) {
-                Button("md-glance 帮助") {
-                    openHelp()
-                }
-                .keyboardShortcut("h", modifiers: [.command, .shift])
-            }
-            CommandGroup(replacing: .windowArrangement) {
-                Button("关闭标签页") {
-                    closeCurrentTab()
-                }
-                .keyboardShortcut("w", modifiers: .command)
-            }
         }
     }
 
-    private func closeCurrentTab() {
-        if let window = NSApplication.shared.keyWindow {
-            // 如果窗口有多个标签，关闭当前标签
-            if window.tabbedWindows?.count ?? 0 > 1 {
-                window.close()
-            } else {
-                // 只有一个标签时，关闭窗口
-                window.close()
-            }
+    private func handleFileURL(_ url: URL) {
+        guard url.pathExtension == "md" || url.pathExtension == "markdown" else {
+            NSLog("[handleFileURL] ⚠️ 非 Markdown 文件: \(url.pathExtension)")
+            return
         }
+
+        guard FileManager.default.fileExists(atPath: url.path) else {
+            NSLog("[handleFileURL] ❌ 文件不存在: \(url.path)")
+            return
+        }
+
+        NSLog("[handleFileURL] ✅ 正在打开文件: \(url.lastPathComponent)")
+        GlobalFileState.shared.currentFileURL = url
     }
 
     private func openFile() {
@@ -139,85 +150,51 @@ struct md_glanceApp: App {
         panel.canChooseDirectories = false
 
         if panel.runModal() == .OK {
-            for url in panel.urls {
-                openFileInNewWindow(url)
+            if let url = panel.urls.first {
+                GlobalFileState.shared.currentFileURL = url
             }
         }
     }
+}
 
-    private func openHelp() {
-        var helpURL: URL?
-        // 1) SPM 资源 bundle：Contents/Resources/md-glance_md-glance.bundle/HELP.md
-        let resourcesURL = Bundle.main.bundleURL
-            .appendingPathComponent("Contents/Resources", isDirectory: true)
-        let appBundleURL = resourcesURL.appendingPathComponent("md-glance_md-glance.bundle", isDirectory: true)
-        let helpInBundle = appBundleURL.appendingPathComponent("HELP.md", isDirectory: false)
-        if FileManager.default.fileExists(atPath: helpInBundle.path) {
-            helpURL = helpInBundle
-        }
-        // 2) 主 bundle 根资源
-        if helpURL == nil {
-            helpURL = Bundle.main.url(forResource: "HELP", withExtension: "md")
-        }
-        // 3) 主 bundle 的 Contents/Resources 直放
-        if helpURL == nil {
-            let direct = resourcesURL.appendingPathComponent("HELP.md", isDirectory: false)
-            if FileManager.default.fileExists(atPath: direct.path) { helpURL = direct }
-        }
-        if let url = helpURL {
-            openFileInNewWindow(url)
-        }
+// 共享内容视图 - 监听全局文件状态
+struct SharedContentView: View {
+    @ObservedObject private var globalState = GlobalFileState.shared
+    @StateObject private var documentManager: DocumentManager
+    @State private var lastOpenedPath: String?
+
+    init() {
+        _documentManager = StateObject(wrappedValue: DocumentManager(fileURL: nil))
     }
 
-    private func openFileInNewWindow(_ url: URL) {
-        // 使用 macOS 原生方式打开新窗口/标签
-        if let window = NSApplication.shared.windows.first {
-            let newContentView = ContentView(fileURL: url)
-            let newWindow = NSWindow(
-                contentRect: window.frame,
-                styleMask: window.styleMask,
-                backing: .buffered,
-                defer: false
-            )
-            newWindow.contentView = NSHostingView(rootView: newContentView)
-            newWindow.title = url.lastPathComponent
-            newWindow.makeKeyAndOrderFront(nil)
-        }
-    }
-
-    // MARK: - 命令行参数解析
-
-    /// 解析命令行参数中的文件路径
-    /// - Returns: 文件路径字符串，如果没有有效参数则返回 nil
-    private static func parseCommandLineFilePath() -> String? {
-        let arguments = CommandLine.arguments
-
-        // arguments[0] 是应用本身路径，从 index 1 开始检查
-        guard arguments.count > 1 else { return nil }
-
-        // 遍历参数，查找有效的文件路径
-        for i in 1..<arguments.count {
-            let arg = arguments[i]
-
-            // 跳过 macOS 系统参数（如 -NSDocumentRevisionsDebugMode）
-            if arg.hasPrefix("-") { continue }
-
-            // 支持相对路径和绝对路径
-            let filePath = (arg as NSString).expandingTildeInPath
-
-            // 检查文件是否存在
-            if FileManager.default.fileExists(atPath: filePath) {
-                return filePath
+    var body: some View {
+        ContentView(documentManager: documentManager)
+            .onAppear {
+                NSLog("[SharedContentView] 🎬 onAppear 触发, currentFileURL=\(globalState.currentFileURL?.path ?? "nil")")
+                // 处理初始文件（如果在视图创建前就设置了）
+                if let url = globalState.currentFileURL {
+                    let path = url.standardizedFileURL.path
+                    NSLog("[SharedContentView] 📂 onAppear 检查: lastOpenedPath=\(lastOpenedPath ?? "nil"), path=\(path)")
+                    if lastOpenedPath != path {
+                        NSLog("[SharedContentView] 📂 初始文件: \(url.lastPathComponent)")
+                        lastOpenedPath = path
+                        documentManager.openFile(url)
+                    }
+                }
             }
-
-            // 尝试作为相对路径解析
-            let currentDir = FileManager.default.currentDirectoryPath
-            let absolutePath = (currentDir as NSString).appendingPathComponent(arg)
-            if FileManager.default.fileExists(atPath: absolutePath) {
-                return absolutePath
+            .onChange(of: globalState.currentFileURL) { newURL in
+                NSLog("[SharedContentView] 📥 onChange 触发: \(newURL?.path ?? "nil")")
+                if let url = newURL {
+                    let path = url.standardizedFileURL.path
+                    NSLog("[SharedContentView] 📂 onChange 检查: lastOpenedPath=\(lastOpenedPath ?? "nil"), path=\(path)")
+                    if lastOpenedPath != path {
+                        NSLog("[SharedContentView] 📂 正在打开文件: \(url.lastPathComponent)")
+                        lastOpenedPath = path
+                        documentManager.openFile(url)
+                    } else {
+                        NSLog("[SharedContentView] ⚠️ 跳过重复文件: \(path)")
+                    }
+                }
             }
-        }
-
-        return nil
     }
 }

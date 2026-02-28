@@ -11,12 +11,20 @@ import md_glanceCore
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @StateObject private var documentManager: DocumentManager
+    @ObservedObject var documentManager: DocumentManager
     @State private var currentWindow: NSWindow?
     @State private var showToast = false
 
+    /// 保留用于拖放新文件时创建新窗口
+    @State private var lastOpenedPath: String?
+
+    init(documentManager: DocumentManager) {
+        self.documentManager = documentManager
+    }
+
+    /// 便利初始化方法，用于创建新窗口（如标签页）
     init(fileURL: URL? = nil) {
-        _documentManager = StateObject(wrappedValue: DocumentManager(fileURL: fileURL))
+        self.documentManager = DocumentManager(fileURL: fileURL)
     }
 
     var body: some View {
@@ -163,10 +171,26 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 self.currentWindow = NSApplication.shared.keyWindow
             }
-            updateWindowTitle()
+
+            // 检查全局状态中是否有文件要打开
+            if let url = GlobalFileState.shared.currentFileURL {
+                let path = url.standardizedFileURL.path
+                if lastOpenedPath != path {
+                    NSLog("[ContentView] 📂 启动时打开文件: \(url.lastPathComponent)")
+                    lastOpenedPath = path
+                    documentManager.openFile(url)
+                }
+            }
         }
-        .onChange(of: documentManager.fileURL) { _ in
-            updateWindowTitle()
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FileOpened"))) { notification in
+            if let url = notification.object as? URL {
+                let path = url.standardizedFileURL.path
+                if lastOpenedPath != path {
+                    NSLog("[ContentView] 📂 监听收到文件打开通知: \(url.lastPathComponent)")
+                    lastOpenedPath = path
+                    documentManager.openFile(url)
+                }
+            }
         }
     }
 
