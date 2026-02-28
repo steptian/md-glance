@@ -43,7 +43,7 @@ cd md-glance/release
 
 **方式二：下载发布版本**
 
-从 [Releases](https://github.com/steptian/md-glance/releases) 下载最新的 `.dmg` 安装包。
+从仓库的 [release 目录](https://github.com/steptian/md-glance/tree/main/release) 下载最新的 `.dmg` 安装包。
 
 ### 从源码构建
 
