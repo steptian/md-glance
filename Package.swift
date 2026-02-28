@@ -12,7 +12,7 @@ let package = Package(
             targets: ["md-glance"]
         ),
         .executable(
-            name: "md-glanceCLI",
+            name: "mdg",
             targets: ["md-glanceCLI"]
         ),
     ],
@@ -27,7 +27,11 @@ let package = Package(
             ],
             path: "md-glance/App",
             resources: [
-                .process("HELP.md")
+                .process("HELP.md"),
+                .process("Resources/AppIcon.icns"),
+                .process("Resources/AppIcon.iconset"),
+                .copy("wechat.jpg"),
+                .copy("wechat-pay.jpg"),
             ],
             linkerSettings: [
                 .linkedFramework("WebKit"),
@@ -53,6 +57,10 @@ let package = Package(
             name: "md-glanceCLI",
             dependencies: ["md-glanceCore"],
             path: "md-glanceCLI",
+            exclude: [
+                "README.md",
+                "install.sh"
+            ],
             linkerSettings: [
                 .linkedFramework("AppKit"),
                 .linkedFramework("Foundation"),
