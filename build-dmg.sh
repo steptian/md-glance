@@ -25,8 +25,8 @@ mkdir -p "$RELEASE_DIR/$APP_BUNDLE/Contents/Resources"
 # 可执行文件
 cp "$BIN_PATH/$APP_NAME" "$RELEASE_DIR/$APP_BUNDLE/Contents/MacOS/"
 
-# Core 资源 bundle 必须放在 .app 根目录（Bundle.module 查找路径）
-cp -R "$BIN_PATH/md-glance_md-glanceCore.bundle" "$RELEASE_DIR/$APP_BUNDLE/"
+# Core 资源 bundle 放在 Contents/Resources（Bundle.module 查找路径）
+cp -R "$BIN_PATH/md-glance_md-glanceCore.bundle" "$RELEASE_DIR/$APP_BUNDLE/Contents/Resources/"
 
 # 主 target 资源 bundle（含 HELP.md），放在 Contents/Resources 供帮助菜单打开
 cp -R "$BIN_PATH/md-glance_md-glance.bundle" "$RELEASE_DIR/$APP_BUNDLE/Contents/Resources/"
@@ -98,6 +98,13 @@ cat > "$RELEASE_DIR/$APP_BUNDLE/Contents/Info.plist" << 'EOF'
 </dict>
 </plist>
 EOF
+
+echo "🔐 签名应用..."
+# 对所有内嵌的 bundle 签名
+codesign --force --deep --sign - "$RELEASE_DIR/$APP_BUNDLE/Contents/Resources/md-glance_md-glanceCore.bundle" 2>/dev/null || true
+codesign --force --deep --sign - "$RELEASE_DIR/$APP_BUNDLE/Contents/Resources/md-glance_md-glance.bundle" 2>/dev/null || true
+# 对整个 .app 签名
+codesign --force --deep --sign - "$RELEASE_DIR/$APP_BUNDLE"
 
 echo "📀 创建 .dmg 安装包..."
 rm -f "$RELEASE_DIR/$DMG_NAME"

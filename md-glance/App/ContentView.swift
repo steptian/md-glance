@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import AppKit
 import WebKit
 import md_glanceCore
 import UniformTypeIdentifiers
@@ -14,6 +15,8 @@ struct ContentView: View {
     @ObservedObject var documentManager: DocumentManager
     @State private var currentWindow: NSWindow?
     @State private var showToast = false
+    @State private var toastMessage = ""
+    @State private var saveFailed = false
 
     /// 保留用于拖放新文件时创建新窗口
     @State private var lastOpenedPath: String?
@@ -30,8 +33,8 @@ struct ContentView: View {
     var body: some View {
         ZStack {
             VStack(spacing: 0) {
-                // 顶部进度条
-                if documentManager.fileURL != nil {
+                // 顶部进度条（仅预览模式）
+                if documentManager.fileURL != nil, documentManager.viewMode == .preview {
                     GeometryReader { geometry in
                         ZStack(alignment: .leading) {
                             // 背景轨道
@@ -49,28 +52,34 @@ struct ContentView: View {
                 // 主内容
                 Group {
                     if documentManager.fileURL != nil {
-                        HStack(spacing: 0) {
-                            // 主内容区域
-                            MarkdownWebViewWrapper(
-                                documentManager: documentManager,
-                                onFileDrop: { url in
-                                    handleFileDrop(url)
-                                }
-                            )
-                            .id(documentManager.fileURL)
-                            .frame(maxWidth: .infinity)
+                        Group {
+                            if documentManager.viewMode == .preview {
+                                HStack(spacing: 0) {
+                                    MarkdownWebViewWrapper(
+                                        documentManager: documentManager,
+                                        onFileDrop: { url in
+                                            handleFileDrop(url)
+                                        }
+                                    )
+                                    .id(documentManager.fileURL)
+                                    .frame(maxWidth: .infinity)
 
-                            // 侧边栏目录（带动画）
-                            if !documentManager.tocItems.isEmpty {
-                                TOCSidebarView(
-                                    items: documentManager.tocItems,
-                                    currentSlug: documentManager.currentHeadingSlug,
-                                    onSelect: { slug in
-                                        documentManager.scrollToHeading(slug: slug)
+                                    if !documentManager.tocItems.isEmpty {
+                                        TOCSidebarView(
+                                            items: documentManager.tocItems,
+                                            currentSlug: documentManager.currentHeadingSlug,
+                                            onSelect: { slug in
+                                                documentManager.scrollToHeading(slug: slug)
+                                            }
+                                        )
+                                        .frame(width: documentManager.showTOC ? 220 : 0)
+                                        .clipped()
                                     }
-                                )
-                                .frame(width: documentManager.showTOC ? 220 : 0)
-                                .clipped()
+                                }
+                            } else {
+                                MarkdownSourceEditor(text: $documentManager.content)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .padding(8)
                             }
                         }
                     } else {
@@ -90,7 +99,7 @@ struct ContentView: View {
                         HStack {
                             Image(systemName: "checkmark.circle.fill")
                                 .foregroundColor(.green)
-                            Text("已复制到剪贴板")
+                            Text(toastMessage)
                                 .font(.system(size: 12))
                         }
                         .padding(.horizontal, 12)
@@ -107,13 +116,43 @@ struct ContentView: View {
                 .transition(.opacity)
             }
         }
-        .navigationTitle(documentManager.fileURL?.lastPathComponent ?? "md-glance")
+        .navigationTitle(navigationTitleText)
         .onDrop(of: [.fileURL], isTargeted: nil) { providers in
             handleDrop(providers: providers)
         }
         .toolbar {
             ToolbarItemGroup {
                 if documentManager.fileURL != nil {
+                    Picker("", selection: $documentManager.viewMode) {
+                        ForEach(MarkdownViewMode.allCases) { mode in
+                            Text(mode.title).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(minWidth: 140)
+                    .onChange(of: documentManager.viewMode) { newMode in
+                        if newMode == .preview {
+                            documentManager.syncFromDiskIfCleanPreservingScroll()
+                        }
+                    }
+
+                    Divider()
+                        .frame(height: 12)
+
+                    Button(action: saveDocument) {
+                        Image(systemName: "square.and.arrow.down")
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(documentManager.isDirty ? .accentColor : .secondary)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                    }
+                    .buttonStyle(.plain)
+                    .help("保存到磁盘 (⌘S)")
+                    .keyboardShortcut("s", modifiers: .command)
+
+                    Divider()
+                        .frame(height: 12)
+
                     // 统计信息
                     Text("\(documentManager.wordCount) 字  \(documentManager.lineCount) 行")
                         .font(.system(size: 11))
@@ -125,6 +164,7 @@ struct ContentView: View {
                     // 复制全文按钮
                     Button(action: {
                         copyAllText()
+                        toastMessage = "已复制到剪贴板"
                         withAnimation(.easeInOut(duration: 0.2)) {
                             showToast = true
                         }
@@ -142,29 +182,36 @@ struct ContentView: View {
                     .buttonStyle(.plain)
                     .help("复制全文")
 
-                    Divider()
-                        .frame(height: 12)
+                    if documentManager.viewMode == .preview {
+                        Divider()
+                            .frame(height: 12)
 
-                    // 目录按钮
-                    Button(action: {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            documentManager.showTOC.toggle()
+                        // 目录按钮
+                        Button(action: {
+                            withAnimation(.easeInOut(duration: 0.2)) {
+                                documentManager.showTOC.toggle()
+                            }
+                        }) {
+                            Image(systemName: "sidebar.right")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(documentManager.showTOC ? .accentColor : .secondary)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 4)
+                                .background(
+                                    RoundedRectangle(cornerRadius: 4)
+                                        .fill(documentManager.showTOC ? Color.accentColor.opacity(0.15) : Color.clear)
+                                )
                         }
-                    }) {
-                        Image(systemName: "sidebar.right")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundColor(documentManager.showTOC ? .accentColor : .secondary)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 4)
-                            .background(
-                                RoundedRectangle(cornerRadius: 4)
-                                    .fill(documentManager.showTOC ? Color.accentColor.opacity(0.15) : Color.clear)
-                            )
+                        .buttonStyle(.plain)
+                        .help(documentManager.showTOC ? "隐藏目录" : "显示目录")
                     }
-                    .buttonStyle(.plain)
-                    .help(documentManager.showTOC ? "隐藏目录" : "显示目录")
                 }
             }
+        }
+        .alert("无法保存文件", isPresented: $saveFailed) {
+            Button("好", role: .cancel) {}
+        } message: {
+            Text("请检查磁盘权限或文件是否被其他应用占用。")
         }
         .onAppear {
             // 保存窗口引用
@@ -182,6 +229,9 @@ struct ContentView: View {
                 }
             }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .mdGlanceSaveDocument)) { _ in
+            saveDocument()
+        }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("FileOpened"))) { notification in
             if let url = notification.object as? URL {
                 let path = url.standardizedFileURL.path
@@ -191,6 +241,29 @@ struct ContentView: View {
                     documentManager.openFile(url)
                 }
             }
+        }
+    }
+
+    private var navigationTitleText: String {
+        let base = documentManager.fileURL?.lastPathComponent ?? "md-glance"
+        guard documentManager.fileURL != nil else { return base }
+        return documentManager.isDirty ? "\(base) （已修改）" : base
+    }
+
+    private func saveDocument() {
+        guard documentManager.fileURL != nil else { return }
+        if documentManager.saveToDisk() {
+            toastMessage = "已保存"
+            withAnimation(.easeInOut(duration: 0.2)) {
+                showToast = true
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showToast = false
+                }
+            }
+        } else {
+            saveFailed = true
         }
     }
 
@@ -398,13 +471,72 @@ struct EmptyStateView: View {
             Image(systemName: "doc.text")
                 .font(.system(size: 64))
                 .foregroundColor(.secondary)
-            Text("Open a Markdown file to get started")
+            Text("打开 Markdown 文件开始")
                 .font(.title2)
                 .foregroundColor(.secondary)
-            Text("⌘O to open, or drag a .md file here")
+            Text("⌘O 打开，或拖入 .md；打开后可用工具栏在预览与编辑间切换")
                 .font(.subheadline)
                 .foregroundColor(.secondary.opacity(0.7))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+// MARK: - 源码编辑（等宽 NSTextView）
+struct MarkdownSourceEditor: NSViewRepresentable {
+    @Binding var text: String
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeNSView(context: Context) -> NSScrollView {
+        let scrollView = NSTextView.scrollableTextView()
+        guard let textView = scrollView.documentView as? NSTextView else {
+            return scrollView
+        }
+        textView.delegate = context.coordinator
+        textView.isRichText = false
+        textView.font = NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        textView.string = text
+        textView.isAutomaticQuoteSubstitutionEnabled = false
+        textView.isAutomaticDashSubstitutionEnabled = false
+        textView.isAutomaticTextReplacementEnabled = false
+        textView.textContainerInset = NSSize(width: 12, height: 12)
+        textView.drawsBackground = false
+        context.coordinator.textView = textView
+        return scrollView
+    }
+
+    func updateNSView(_ scrollView: NSScrollView, context: Context) {
+        guard let textView = scrollView.documentView as? NSTextView else { return }
+        context.coordinator.textView = textView
+        if textView.string != text {
+            let range = textView.selectedRange()
+            textView.string = text
+            let len = (text as NSString).length
+            if range.location <= len {
+                let loc = min(range.location, len)
+                let rem = max(0, len - loc)
+                let newLen = min(range.length, rem)
+                textView.setSelectedRange(NSRange(location: loc, length: newLen))
+            }
+        }
+    }
+
+    final class Coordinator: NSObject, NSTextViewDelegate {
+        var parent: MarkdownSourceEditor
+        weak var textView: NSTextView?
+
+        init(_ parent: MarkdownSourceEditor) {
+            self.parent = parent
+        }
+
+        func textDidChange(_ notification: Notification) {
+            guard let tv = textView else { return }
+            parent.text = tv.string
+        }
     }
 }

@@ -5,7 +5,7 @@
 set -e
 
 # 配置
-CLI_NAME="md-glance"
+CLI_NAME="mdg"
 INSTALL_DIR="/usr/local/bin"
 BUILD_DIR=".build/debug"
 
@@ -13,9 +13,9 @@ BUILD_DIR=".build/debug"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-echo "🔨 正在构建 md-glanceCLI..."
+echo "🔨 正在构建 mdg..."
 cd "$PROJECT_ROOT"
-swift build --product md-glanceCLI
+swift build --product mdg
 
 echo "📦 正在安装 $CLI_NAME 到 $INSTALL_DIR..."
 
@@ -26,7 +26,7 @@ if [ ! -d "$INSTALL_DIR" ]; then
 fi
 
 # 复制可执行文件
-sudo cp "$BUILD_DIR/md-glanceCLI" "$INSTALL_DIR/$CLI_NAME"
+sudo cp "$BUILD_DIR/mdg" "$INSTALL_DIR/$CLI_NAME"
 sudo chmod +x "$INSTALL_DIR/$CLI_NAME"
 
 echo "✅ 安装完成！"

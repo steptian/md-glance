@@ -19,6 +19,8 @@ class GlobalFileState: ObservableObject {
 // AppDelegate - 处理文件打开
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var hasOpenedFile = false
+    private var activationRetryCount = 0
+    private let maxActivationRetries = 10
 
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
         NSLog("[AppDelegate] applicationShouldOpenUntitledFile: true (允许创建窗口以接收文件打开事件)")
@@ -27,6 +29,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         NSLog("[AppDelegate] applicationShouldHandleReopen: hasVisibleWindows=\(flag)")
+        // 如果没有可见窗口且有文件待打开，强制激活
+        if !flag && GlobalFileState.shared.currentFileURL != nil {
+            NSLog("[AppDelegate] 🔄 检测到有文件待打开但无可见窗口，强制激活")
+            NSApp.activate(ignoringOtherApps: true)
+        }
         return true
     }
 
@@ -72,32 +79,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         NSLog("[AppDelegate] ✅ 处理文件打开: \(fileURL.lastPathComponent)")
         hasOpenedFile = true
 
-        // 激活应用并置顶窗口
+        // 立即激活应用，促使 SwiftUI 尽快创建窗口
+        NSApp.setActivationPolicy(.regular)
+        NSApp.activate(ignoringOtherApps: true)
+
+        // 更新全局状态
         DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-
-            // 确保窗口显示在最前面
-            if let window = NSApp.windows.first {
-                window.makeKeyAndOrderFront(nil)
-            }
-
             GlobalFileState.shared.currentFileURL = fileURL
+        }
+
+        // 延迟激活窗口
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            self.activateAndBringToFront()
         }
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         NSLog("[AppDelegate] 🚀 应用启动完成")
 
-        // 激活应用并确保窗口在最前面
+        // 确保应用可以激活到前台
+        NSApp.setActivationPolicy(.regular)
+
+        // 立即激活一次
+        NSApp.activate(ignoringOtherApps: true)
+
+        // 启动重试机制，等待 SwiftUI 创建窗口
+        retryActivation()
+    }
+
+    func applicationDidBecomeActive(_ notification: Notification) {
+        NSLog("[AppDelegate] 🔔 应用已激活")
+        // 确保窗口在最前面
         DispatchQueue.main.async {
-            NSApp.activate(ignoringOtherApps: true)
-            if let window = NSApp.windows.first {
-                window.makeKeyAndOrderFront(nil)
+            self.activateAndBringToFront()
+        }
+    }
+
+    private func retryActivation() {
+        activationRetryCount += 1
+        NSLog("[AppDelegate] 🔄 重试激活 (\(activationRetryCount)/\(maxActivationRetries))，窗口数: \(NSApp.windows.count)")
+
+        NSApp.activate(ignoringOtherApps: true)
+
+        if NSApp.windows.isEmpty && activationRetryCount < maxActivationRetries {
+            // 窗口还未创建，继续重试
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.retryActivation()
             }
+        } else {
+            // 窗口已创建或达到最大重试次数，执行最终激活
+            activateAndBringToFront()
+        }
+    }
+
+    private func activateAndBringToFront() {
+        NSApp.activate(ignoringOtherApps: true)
+
+        // 遍历所有窗口并激活
+        for window in NSApp.windows {
+            window.makeKeyAndOrderFront(nil)
+            window.orderFrontRegardless()
         }
 
-        // 检查命令行参数（仅在没有通过 openFiles 处理时）
-        // 注意：openFiles 已经处理了文件，这里不需要重复处理
+        NSLog("[AppDelegate] ✅ 窗口已激活，窗口数: \(NSApp.windows.count)")
     }
 }
 
@@ -111,6 +155,14 @@ struct md_glanceApp: App {
                 .frame(minWidth: 600, minHeight: 400)
                 .onAppear {
                     NSLog("[WindowGroup] Window appeared")
+                    // 窗口出现时立即激活
+                    DispatchQueue.main.async {
+                        NSApp.activate(ignoringOtherApps: true)
+                        if let window = NSApp.windows.first {
+                            window.makeKeyAndOrderFront(nil)
+                            window.orderFrontRegardless()
+                        }
+                    }
                 }
                 // 处理应用已运行时的文件打开
                 .onOpenURL { url in
@@ -124,6 +176,10 @@ struct md_glanceApp: App {
                     openFile()
                 }
                 .keyboardShortcut("o", modifiers: .command)
+                Button("保存") {
+                    NotificationCenter.default.post(name: .mdGlanceSaveDocument, object: nil)
+                }
+                .keyboardShortcut("s", modifiers: .command)
             }
         }
     }
@@ -178,6 +234,23 @@ struct SharedContentView: View {
         ContentView(documentManager: documentManager)
             .onAppear {
                 NSLog("[SharedContentView] 🎬 onAppear 触发, currentFileURL=\(globalState.currentFileURL?.path ?? "nil")")
+
+                // 激活窗口到最前面 - 使用更可靠的方法
+                DispatchQueue.main.async {
+                    // 1. 确保应用策略正确
+                    NSApp.setActivationPolicy(.regular)
+                    // 2. 激活应用
+                    NSApp.activate(ignoringOtherApps: true)
+                    // 3. 找到当前视图所在的窗口并激活
+                    if let window = NSApp.windows.last {
+                        window.makeKeyAndOrderFront(nil)
+                        window.orderFrontRegardless()
+                        // 4. 再次确保应用在最前面
+                        NSApp.activate(ignoringOtherApps: true)
+                    }
+                    NSLog("[SharedContentView] ✅ 窗口已激活，窗口数: \(NSApp.windows.count)")
+                }
+
                 // 处理初始文件（如果在视图创建前就设置了）
                 if let url = globalState.currentFileURL {
                     let path = url.standardizedFileURL.path

@@ -9,14 +9,40 @@ import Foundation
 import Combine
 import WebKit
 import md_glanceCore
+import FileWatcher
+
+/// 主界面展示模式：渲染预览或编辑源码
+enum MarkdownViewMode: String, CaseIterable, Identifiable {
+    case preview
+    case edit
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .preview: return "预览"
+        case .edit: return "编辑"
+        }
+    }
+}
 
 class DocumentManager: ObservableObject {
     @Published var fileURL: URL?
+    /// 与磁盘上次成功保存或载入一致的内容，用于判断是否有未保存修改
+    private var lastSavedContent: String = ""
+
     @Published var content: String = "" {
         didSet {
             updateStats()
+            isDirty = content != lastSavedContent
         }
     }
+
+    /// 是否存在未写入磁盘的修改
+    @Published private(set) var isDirty: Bool = false
+
+    /// 预览 / 编辑
+    @Published var viewMode: MarkdownViewMode = .preview
     @Published var scrollPosition: CGFloat = 0
     @Published var scrollProgress: CGFloat = 0  // 0.0 - 1.0
     @Published var tocItems: [TOCItem] = []
@@ -34,6 +60,13 @@ class DocumentManager: ObservableObject {
     /// WebView 引用
     weak var webView: WKWebView?
 
+    private var fileWatcher: FileWatcher?
+
+    deinit {
+        fileWatcher?.stop()
+        fileWatcher = nil
+    }
+
     /// 初始化并打开文件
     init(fileURL: URL? = nil) {
         if let url = fileURL {
@@ -43,12 +76,64 @@ class DocumentManager: ObservableObject {
 
     /// 打开文件
     func openFile(_ url: URL) {
-        fileURL = url
-        content = loadContent(from: url)
+        let resolved = url.standardizedFileURL
+        stopFileWatcher()
+        fileURL = resolved
+        let loaded = loadContent(from: resolved)
+        lastSavedContent = loaded
+        content = loaded
         scrollPosition = 0
         currentHeadingSlug = ""
         tocItems = []
         isRendered = false  // 重置渲染状态，触发淡入动画
+        viewMode = .preview
+        startFileWatcher(for: resolved)
+    }
+
+    /// 将当前内容写入磁盘；成功时清除脏标记
+    @discardableResult
+    func saveToDisk() -> Bool {
+        guard let url = fileURL else { return false }
+        do {
+            try content.write(to: url, atomically: true, encoding: .utf8)
+            lastSavedContent = content
+            isDirty = false
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /// 从编辑切回预览时调用：在未修改时合并外部保存的磁盘内容
+    func syncFromDiskIfCleanPreservingScroll() {
+        guard viewMode == .preview, !isDirty, let url = fileURL else { return }
+
+        let apply: (CGFloat) -> Void = { [weak self] scrollY in
+            guard let self = self else { return }
+            let disk = self.loadContent(from: url)
+            guard disk != self.content else { return }
+            self.scrollPosition = scrollY
+            self.lastSavedContent = disk
+            self.content = disk
+        }
+
+        if let wv = webView {
+            wv.evaluateJavaScript("window.pageYOffset") { result, _ in
+                let y: CGFloat
+                if let n = result as? NSNumber {
+                    y = CGFloat(n.doubleValue)
+                } else if let c = result as? CGFloat {
+                    y = c
+                } else {
+                    y = 0
+                }
+                DispatchQueue.main.async {
+                    apply(y)
+                }
+            }
+        } else {
+            apply(0)
+        }
     }
 
     /// 标记渲染完成
@@ -146,6 +231,54 @@ class DocumentManager: ObservableObject {
         (try? String(contentsOf: url, encoding: .utf8)) ?? "# Error\n\nUnable to load file: \(url.path)"
     }
 
+    private func stopFileWatcher() {
+        fileWatcher?.stop()
+        fileWatcher = nil
+    }
+
+    private func startFileWatcher(for url: URL) {
+        let path = url.path
+        let watcher = FileWatcher(url: url) { [weak self] in
+            self?.reloadFromDiskIfChanged(watchedPath: path)
+        }
+        fileWatcher = watcher
+        watcher.start()
+    }
+
+    /// 外部工具保存文件后重新载入并触发 WebView 渲染；尽量保持滚动位置。
+    private func reloadFromDiskIfChanged(watchedPath: String) {
+        guard let url = fileURL, url.path == watchedPath else { return }
+        // 编辑模式下不自动覆盖缓冲区；有未保存修改时也不覆盖
+        guard viewMode == .preview, !isDirty else { return }
+
+        let apply: (CGFloat) -> Void = { [weak self] scrollY in
+            guard let self = self else { return }
+            let newContent = self.loadContent(from: url)
+            guard newContent != self.content else { return }
+            self.scrollPosition = scrollY
+            self.lastSavedContent = newContent
+            self.content = newContent
+        }
+
+        if let wv = webView {
+            wv.evaluateJavaScript("window.pageYOffset") { result, _ in
+                let y: CGFloat
+                if let n = result as? NSNumber {
+                    y = CGFloat(n.doubleValue)
+                } else if let c = result as? CGFloat {
+                    y = c
+                } else {
+                    y = 0
+                }
+                DispatchQueue.main.async {
+                    apply(y)
+                }
+            }
+        } else {
+            apply(0)
+        }
+    }
+
     private func updateStats() {
         // 字符数（不含空格）
         charCount = content.filter { !$0.isWhitespace }.count
@@ -164,6 +297,10 @@ class DocumentManager: ObservableObject {
 }
 
 // MARK: - Character 扩展
+extension Notification.Name {
+    static let mdGlanceSaveDocument = Notification.Name("mdGlanceSaveDocument")
+}
+
 extension Character {
     var isChineseCharacter: Bool {
         guard let scalar = unicodeScalars.first else { return false }

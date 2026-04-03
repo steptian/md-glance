@@ -130,16 +130,38 @@ struct MDGlanceCLI {
 
         // 根据类型选择启动方式
         if isAppBundle {
-            // .app 包：直接运行可执行文件
-            // 这样可以确保命令行参数被正确传递
-            openFileDirectly(appPath: foundPath, fileURL: fileURL)
+            // .app 包：通过 NSWorkspace 打开，走 Launch Services 流程
+            // 这样可以正确激活窗口（Process 直接 spawn 会绕过 Launch Services，导致窗口不激活）
+            openWithWorkspace(appPath: foundPath, fileURL: fileURL)
         } else {
-            // 二进制文件：直接运行
+            // 二进制文件：直接运行（开发调试场景，无 .app 包）
             openFileDirectly(appPath: foundPath, fileURL: fileURL)
         }
     }
 
-    /// 直接运行应用并传递文件参数
+    /// 通过 Launch Services 打开文件，确保应用正确激活到前台
+    private static func openWithWorkspace(appPath: String, fileURL: URL) {
+        let appURL = URL(fileURLWithPath: appPath)
+
+        // 配置：显式激活应用到前台
+        let config = NSWorkspace.OpenConfiguration()
+        config.activates = true
+
+        NSWorkspace.shared.open([fileURL], withApplicationAt: appURL, configuration: config) { app, error in
+            if let error = error {
+                print("错误: \(error.localizedDescription)")
+                exit(1)
+            }
+            if app != nil {
+                print("正在打开: \(fileURL.lastPathComponent)")
+            }
+        }
+
+        // 保持进程运行足够长时间让应用启动
+        RunLoop.current.run(until: Date(timeIntervalSinceNow: 1))
+    }
+
+    /// 直接运行应用并传递文件参数（仅用于开发调试时的二进制启动）
     private static func openFileDirectly(appPath: String, fileURL: URL) {
         let process = Process()
         let executablePath = appPath.hasSuffix(".app") ? appPath + "/Contents/MacOS/md-glance" : appPath

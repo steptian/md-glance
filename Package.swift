@@ -24,6 +24,7 @@ let package = Package(
             name: "md-glance",
             dependencies: [
                 "md-glanceCore",
+                "FileWatcher",
             ],
             path: "md-glance/App",
             resources: [

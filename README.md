@@ -15,11 +15,12 @@
 ## ✨ 特性
 
 - **🎨 精美渲染** - GitHub 风格的 Markdown 样式，支持深色模式
+- **✏️ 预览与编辑** - 工具栏可在「预览」与「编辑」间切换；编辑模式为等宽源码编辑，支持 **⌘S 保存** 到磁盘，标题显示未保存状态
 - **🧮 数学公式** - 基于 KaTeX 的 LaTeX 数学公式渲染
 - **📊 图表支持** - Mermaid 流程图、时序图、甘特图等
 - **💻 代码高亮** - highlight.js 支持多种编程语言语法高亮
-- **📑 目录导航** - 自动生成 TOC 目录，支持快速跳转
-- **🔄 实时刷新** - 文件变更自动重新渲染
+- **📑 目录导航** - 自动生成 TOC 目录，支持快速跳转（预览模式）
+- **🔄 实时刷新** - 预览模式下，外部保存文件后自动重新渲染；编辑或未保存时不会覆盖本地修改
 - **📜 滚动保持** - 刷新后自动恢复阅读位置
 - **🖱️ 拖拽打开** - 支持拖拽 Markdown 文件到窗口
 - **🔍 QuickLook** - 按空格键快速预览 Markdown 文件
@@ -95,7 +96,8 @@ md-glance/
 
 1. 双击打开 `md-glance.app`
 2. 使用 `⌘O` 打开 Markdown 文件，或直接拖拽文件到窗口
-3. 点击工具栏按钮切换目录显示、复制全文等
+3. 使用工具栏 **「预览 | 编辑」** 分段控件切换模式；在编辑模式下修改后可用工具栏保存按钮或 **⌘S** 写入文件
+4. 预览模式下可切换目录侧栏、复制全文等
 
 ### 命令行工具 (mdg)
 
@@ -123,17 +125,18 @@ mdg ./docs/spec.md
 
 **包含：**
 - 文件读取与内容渲染
+- Markdown **源码编辑**与保存（与预览切换使用）
 - GitHub Flavored Markdown
 - LaTeX 数学公式（行内 `$` 与块级 `$$`）
 - Mermaid 图表
 - 代码语法高亮
-- 实时文件监控与刷新
+- 实时文件监控与刷新（与未保存状态协调）
 - TOC 目录导航
 - QuickLook 扩展
 
 **不包含：**
-- 文本编辑功能
-- 文件导出
+- 所见即所得（WYSIWYG）编辑
+- 文件导出（PDF/HTML 等）
 - 云同步
 - 多标签页管理
 - 自定义主题
@@ -179,6 +182,15 @@ MIT License - 详见 [LICENSE](LICENSE)
 
 ## 📋 更新日志
 
+### v1.2.0 (2026-04-03)
+
+**新功能：**
+- 主窗口 **预览 / 编辑** 双模式：等宽源码编辑、⌘S 与工具栏保存、未保存时在标题标注「已修改」
+- 文件监控在编辑模式或有未保存修改时不覆盖缓冲区；切回预览且无未保存修改时会尝试与磁盘同步
+
+**其他：**
+- 打包脚本 `build-dmg.sh` 与 CLI/安装脚本等配套调整（详见提交记录）
+
 ### v1.1.1 (2026-03-01)
 
 **Bug 修复：**
@@ -216,11 +228,12 @@ A minimalist and elegant native Markdown preview tool for macOS.
 ### Features
 
 - 🎨 Beautiful GitHub-style rendering with dark mode support
+- ✏️ **Preview & edit** - Switch between rendered preview and monospace source editing; **⌘S** saves to disk; window title shows when there are unsaved changes
 - 🧮 LaTeX math formulas via KaTeX
 - 📊 Mermaid diagrams (flowcharts, sequences, gantt charts)
 - 💻 Syntax highlighting with highlight.js
-- 📑 Auto-generated table of contents
-- 🔄 Auto-refresh on file changes
+- 📑 Auto-generated table of contents (preview mode)
+- 🔄 Auto-refresh on external saves in preview; does not overwrite local edits while editing or when dirty
 - 📜 Scroll position preservation
 - 🖱️ Drag & drop to open
 - 🔍 QuickLook extension
